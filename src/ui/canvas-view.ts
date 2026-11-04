@@ -1,4 +1,6 @@
-import { TRANSPARENT, drawLine, floodFill, renderFrameRGBA, type Sprite } from '../sprite';
+import { renderFrameRGBA, type Point, type Sprite } from '../sprite';
+import { createOverlay } from './canvas-overlay';
+import { startGesture, type Gesture } from './canvas-tools';
 import { h } from './dom';
 import type { Store } from './store';
 
@@ -6,18 +8,22 @@ const ZOOMS = [0.25, 0.5, 1, 2, 3, 4, 6, 8, 12, 16, 24, 32];
 /** 확대한 캔버스 한 변의 최대 길이 (CSS 픽셀) */
 const MAX_DISPLAY = 8192;
 
-/** 현재 프레임을 확대해 보여주고, 포인터로 현재 레이어에 그린다. 빈 픽셀은 체크무늬(투명)로 보인다. */
+/**
+ * 현재 프레임을 확대해 보여주고, 포인터 입력을 현재 도구의 작업(canvas-tools)으로 넘긴다.
+ * 빈 픽셀은 체크무늬(투명)로 보이고, 선택 영역과 벡터 패스는 겹친 오버레이(canvas-overlay)로 보인다.
+ */
 export function createCanvasView(store: Store): HTMLElement {
   const canvas = h('canvas', { className: 'sprite-canvas' });
   const context = canvas.getContext('2d')!;
-  const viewport = h('div', { className: 'viewport' }, canvas);
+  const overlay = createOverlay();
+  const viewport = h('div', { className: 'viewport' }, h('div', { className: 'stage' }, canvas, overlay.element));
   const zoomLabel = h('span', { className: 'zoom-label' });
   let zoom = 1;
   let shown: { sprite: Sprite; width: number; height: number } | undefined;
   let image: ImageData | undefined;
   let renderQueued = false;
-  /** 진행 중인 획. 두 번째 손가락이 닿으면 backup으로 되돌린다. */
-  let stroke: { cel: Uint8Array; backup: Uint8Array; last?: [number, number] } | undefined;
+  /** 진행 중인 도구 작업 */
+  let gesture: Gesture | undefined;
   /** 화면에 닿아 있는 손가락 위치 */
   const touches = new Map<number, [number, number]>();
   /** 화면 이동 중일 때 직전 기준점 */
@@ -30,6 +36,7 @@ export function createCanvasView(store: Store): HTMLElement {
     canvas.style.width = `${store.sprite.width * zoom}px`;
     canvas.style.height = `${store.sprite.height * zoom}px`;
     zoomLabel.textContent = `${zoom * 100}%`;
+    overlay.render(store, zoom);
   };
   const stepZoom = (step: number) => {
     const next = zooms()[zooms().indexOf(zoom) + step];
@@ -61,32 +68,13 @@ export function createCanvasView(store: Store): HTMLElement {
     requestAnimationFrame(render);
   };
 
-  const pixelAt = (event: PointerEvent): [number, number] => {
+  /** 포인터 위치를 스프라이트 픽셀 좌표(소수 포함)로 바꾼다. */
+  const pointAt = (event: PointerEvent): Point => {
     const rect = canvas.getBoundingClientRect();
-    return [
-      Math.floor(((event.clientX - rect.left) / rect.width) * store.sprite.width),
-      Math.floor(((event.clientY - rect.top) / rect.height) * store.sprite.height),
-    ];
-  };
-  const paint = ([x, y]: [number, number]) => {
-    if (!stroke) return;
-    const [fromX, fromY] = stroke.last ?? [x, y];
-    const value = store.tool === 'eraser' ? TRANSPARENT : store.color + 1;
-    drawLine(stroke.cel, store.sprite.width, fromX, fromY, x, y, value);
-    stroke.last = [x, y];
-    queueRender();
-  };
-  const startStroke = (event: PointerEvent) => {
-    if (store.playing) store.update(() => (store.playing = false));
-    const cel = store.sprite.frames[store.frame].cels[store.layer];
-    stroke = { cel, backup: cel.slice() };
-    const [x, y] = pixelAt(event);
-    if (store.tool === 'fill') {
-      floodFill(cel, store.sprite.width, x, y, store.color + 1);
-      queueRender();
-    } else {
-      paint([x, y]);
-    }
+    return {
+      x: ((event.clientX - rect.left) / rect.width) * store.sprite.width,
+      y: ((event.clientY - rect.top) / rect.height) * store.sprite.height,
+    };
   };
   /** 화면 이동 기준점: 마우스 위치 또는 닿아 있는 손가락들의 중심 */
   const panPoint = (event: PointerEvent): [number, number] => {
@@ -102,15 +90,13 @@ export function createCanvasView(store: Store): HTMLElement {
     if (event.pointerType === 'touch') touches.set(event.pointerId, [event.clientX, event.clientY]);
     viewport.setPointerCapture(event.pointerId);
     if (spaceHeld || touches.size > 1) {
-      // 두 번째 손가락이 닿기 전에 첫 손가락으로 그린 획은 취소한다.
-      if (stroke) {
-        stroke.cel.set(stroke.backup);
-        stroke = undefined;
-        queueRender();
-      }
+      // 두 번째 손가락이 닿기 전에 첫 손가락으로 시작한 작업(획, 점 찍기 등)은 취소한다.
+      gesture?.cancel();
+      gesture = undefined;
       panFrom = panPoint(event);
     } else if (event.target === canvas) {
-      startStroke(event);
+      if (store.playing) store.update(() => (store.playing = false));
+      gesture = startGesture(store, pointAt(event), zoom, queueRender);
     }
   };
   viewport.onpointermove = (event) => {
@@ -120,13 +106,13 @@ export function createCanvasView(store: Store): HTMLElement {
       viewport.scrollLeft += panFrom[0] - x;
       viewport.scrollTop += panFrom[1] - y;
       panFrom = [x, y];
-    } else if (stroke?.last) {
-      paint(pixelAt(event));
+    } else {
+      gesture?.move(pointAt(event));
     }
   };
   viewport.onpointerup = viewport.onpointercancel = (event) => {
     touches.delete(event.pointerId);
-    stroke = undefined;
+    gesture = undefined;
     // 손가락이 남아 있으면 남은 손가락을 기준으로 이동을 이어간다.
     panFrom = panFrom && touches.size > 0 ? panPoint(event) : undefined;
   };
@@ -153,6 +139,7 @@ export function createCanvasView(store: Store): HTMLElement {
       shown = { sprite, width: sprite.width, height: sprite.height };
       fitZoom();
     }
+    overlay.render(store, zoom);
     queueRender();
   });
 

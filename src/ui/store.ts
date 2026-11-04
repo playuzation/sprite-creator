@@ -1,6 +1,6 @@
-import { createSprite, type Sprite } from '../sprite';
+import { createSprite, type Point, type Rect, type Sprite } from '../sprite';
 
-export type Tool = 'pencil' | 'eraser' | 'fill';
+export type Tool = 'pencil' | 'eraser' | 'fill' | 'select' | 'vector';
 
 /**
  * 편집기 상태와 변경 알림.
@@ -14,6 +14,12 @@ export class Store {
   layer = 0;
   frame = 0;
   playing = false;
+  /** 선택 영역. 있으면 모든 그리기 도구가 이 안의 픽셀만 바꾼다. */
+  selection: Rect | undefined = undefined;
+  /** 벡터 도구로 찍은 점 (픽셀 좌표, 소수 가능) */
+  path: Point[] = [];
+  /** 벡터 패스를 그릴 때 안티에일리어싱 사용 여부 */
+  antialias = false;
   private listeners: (() => void)[] = [];
 
   subscribe(listener: () => void): void {
@@ -30,6 +36,11 @@ export class Store {
     this.color = clamp(this.color, this.sprite.palette.length);
     this.layer = clamp(this.layer, this.sprite.layers.length);
     this.frame = clamp(this.frame, this.sprite.frames.length);
+    // 캔버스 크기가 줄어 선택 영역이 캔버스를 벗어나면 해제한다.
+    const { selection, sprite } = this;
+    if (selection && (selection.x + selection.width > sprite.width || selection.y + selection.height > sprite.height)) {
+      this.selection = undefined;
+    }
     for (const listener of this.listeners) listener();
   }
 
@@ -38,6 +49,8 @@ export class Store {
     this.sprite = sprite;
     this.color = this.layer = this.frame = 0;
     this.playing = false;
+    this.selection = undefined;
+    this.path = [];
   }
 }
 
