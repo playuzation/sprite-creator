@@ -1,10 +1,11 @@
-import { MAX_SIZE, createSprite, exportGif, loadProject, renderFrameRGBA } from '../sprite';
+import { MAX_SIZE, createSprite, loadProject } from '../sprite';
 import { saveFile } from './commands';
-import { download, h } from './dom';
+import { h } from './dom';
+import { createExportMenu } from './export-menu';
 import { createSizeDialog } from './size-dialog';
 import type { Store } from './store';
 
-/** 상단 메뉴: 새로 만들기, 해상도·캔버스 변경, 프로젝트 저장/불러오기(JSON), PNG/GIF 내보내기 */
+/** 상단 메뉴: 새로 만들기, 해상도·캔버스 변경, 프로젝트 저장/불러오기(JSON), 이미지·애니메이션 내보내기 */
 export function createFileMenu(store: Store): HTMLElement {
   const sizeInput = (title: string) => h('input', { type: 'number', min: '1', max: String(MAX_SIZE), title });
   const width = sizeInput('너비');
@@ -23,12 +24,6 @@ export function createFileMenu(store: Store): HTMLElement {
     } catch (error) {
       alert(`불러오기에 실패했습니다: ${(error as Error).message}`);
     }
-  };
-  const exportPng = () => {
-    const { sprite, frame } = store;
-    const canvas = h('canvas', { width: sprite.width, height: sprite.height });
-    canvas.getContext('2d')!.putImageData(new ImageData(renderFrameRGBA(sprite, frame), sprite.width), 0, 0);
-    canvas.toBlob((blob) => blob && download(blob, 'image/png', `sprite-frame${frame + 1}.png`));
   };
 
   store.subscribe(() => {
@@ -67,12 +62,7 @@ export function createFileMenu(store: Store): HTMLElement {
     h('button', { textContent: '불러오기', title: '프로젝트 파일(JSON) 열기', onclick: () => fileInput.click() }),
     h('button', { textContent: '저장', title: '프로젝트 파일(JSON)로 저장 (Ctrl+S)', onclick: () => saveFile(store) }),
     h('span', { className: 'divider' }),
-    h('button', { textContent: 'PNG 내보내기', title: '현재 프레임을 투명 배경 PNG로 저장', onclick: exportPng }),
-    h('button', {
-      textContent: 'GIF 내보내기',
-      title: '모든 프레임을 투명 배경 애니메이션 GIF로 저장',
-      onclick: () => download(exportGif(store.sprite), 'image/gif', 'sprite.gif'),
-    }),
+    createExportMenu(store),
     fileInput,
     sizeDialog.element,
   );

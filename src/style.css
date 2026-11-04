@@ -42,9 +42,22 @@ h2 {
 }
 
 button,
-input {
+input,
+select {
   font: inherit;
   color: inherit;
+}
+
+select {
+  padding: 4px 6px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+}
+
+.export-menu {
+  display: inline-flex;
+  gap: 6px;
 }
 
 button {
