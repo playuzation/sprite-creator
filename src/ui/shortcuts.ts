@@ -1,4 +1,5 @@
 import { clearPath, copySelection, deselect, moveSelectionTo, pasteClipboard, renderPath, saveFile, selectAll } from './commands';
+import { isFormKey } from './dom';
 import type { Store, Tool } from './store';
 
 type Command = (store: Store) => void;
@@ -24,12 +25,12 @@ const ARROWS = new Map<string, [number, number]>([
 ]);
 
 /**
- * 키보드 단축키. 입력창에 포커스가 있을 때는 동작하지 않는다.
+ * 키보드 단축키. 입력창에 포커스가 있거나 대화창이 열려 있을 때는 동작하지 않는다.
  * 스페이스바(화면 이동)는 캔버스 화면(canvas-view)이 처리한다.
  */
 export function bindShortcuts(store: Store): void {
   window.addEventListener('keydown', (event) => {
-    if (event.target instanceof HTMLInputElement || event.altKey) return;
+    if (isFormKey(event) || event.altKey) return;
     // 포커스된 버튼에서 Enter는 그 버튼을 누르는 것으로 둔다.
     if (event.key === 'Enter' && event.target instanceof HTMLButtonElement) return;
     const command = commandFor(store, event);

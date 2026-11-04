@@ -12,6 +12,10 @@
   box-sizing: border-box;
 }
 
+[hidden] {
+  display: none !important;
+}
+
 body {
   margin: 0;
   background: var(--bg);
@@ -268,6 +272,56 @@ input[type='color'] {
 
 .frame {
   min-width: 36px;
+}
+
+/* 해상도·캔버스 변경 창 */
+.size-dialog {
+  width: min(320px, calc(100vw - 32px));
+  padding: 16px;
+  color: var(--text);
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+}
+
+.size-dialog::backdrop {
+  background: rgb(0 0 0 / 50%);
+}
+
+.size-dialog > * + * {
+  margin-top: 12px;
+}
+
+.size-dialog h2 {
+  font-size: 14px;
+  color: var(--text);
+}
+
+.size-dialog label,
+.anchor {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.anchor-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 32px);
+  gap: 4px;
+}
+
+.anchor-grid button {
+  padding: 4px 0;
+}
+
+.size-dialog .hint {
+  margin-bottom: 0;
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.size-dialog .actions {
+  justify-content: flex-end;
 }
 
 @media (max-width: 720px) {
