@@ -3,5 +3,7 @@
  * 다른 패키지를 import하지 않는다.
  */
 export { encodeGif, type GifOptions } from './gif';
+export { encodeWebp, type WebpOptions } from './webp';
+export { encodeAvif, type AvifOptions } from './avif';
 export { deflate, inflate } from './deflate';
 export { bytesToBase64, base64ToBytes } from './base64';
