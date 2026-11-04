@@ -1,7 +1,7 @@
 import { renderFrameRGBA, type Point, type Sprite } from '../sprite';
 import { createOverlay } from './canvas-overlay';
 import { startGesture, type Gesture } from './canvas-tools';
-import { h } from './dom';
+import { h, isFormKey } from './dom';
 import type { Store } from './store';
 
 const ZOOMS = [0.25, 0.5, 1, 2, 3, 4, 6, 8, 12, 16, 24, 32];
@@ -122,7 +122,7 @@ export function createCanvasView(store: Store): HTMLElement {
     viewport.classList.toggle('panning', held);
   };
   window.addEventListener('keydown', (event) => {
-    if (event.code !== 'Space' || event.target instanceof HTMLInputElement) return;
+    if (event.code !== 'Space' || isFormKey(event)) return;
     event.preventDefault(); // 포커스된 버튼이 스페이스바로 눌리지 않게 한다.
     setSpaceHeld(true);
   });

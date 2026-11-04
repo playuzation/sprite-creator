@@ -90,20 +90,58 @@ export function createPath(): VectorPath {
   return { points: [], curve: false, width: 1, antialias: false };
 }
 
-/** 왼쪽 위를 기준으로 캔버스 크기를 바꾼다. 벗어난 픽셀은 잘리고 늘어난 영역은 투명하다. */
-export function resizeSprite(sprite: Sprite, width: number, height: number): void {
+/** 캔버스 크기를 바꿀 때 그림을 붙여 둘 기준. x, y는 0(왼쪽·위), 0.5(가운데), 1(오른쪽·아래) */
+export interface Anchor {
+  x: number;
+  y: number;
+}
+
+/**
+ * 그림은 그대로 두고 캔버스 크기를 바꾼다(캔버스 변경). 늘어난 곳은 투명하게 채우고, 벗어난 픽셀은 잘린다.
+ * 그림은 anchor 쪽에 붙는다. 가운데 기준에서 차이가 홀수면 오른쪽·아래쪽에 한 픽셀 더 붙이거나 자른다.
+ * 벡터 패스도 그림과 함께 옮긴다.
+ */
+export function resizeCanvas(sprite: Sprite, width: number, height: number, anchor: Anchor = { x: 0, y: 0 }): void {
   assertSize(width, height);
-  const copyWidth = Math.min(width, sprite.width);
-  const copyHeight = Math.min(height, sprite.height);
+  // 원래 그림의 왼쪽 위가 새 캔버스에서 놓일 위치
+  const dx = Math.trunc((width - sprite.width) * anchor.x);
+  const dy = Math.trunc((height - sprite.height) * anchor.y);
+  const [left, right] = [Math.max(0, dx), Math.min(width, dx + sprite.width)];
   for (const frame of sprite.frames) {
     frame.cels = frame.cels.map((cel) => {
       const resized = new Uint8Array(width * height);
-      for (let y = 0; y < copyHeight; y++) {
-        resized.set(cel.subarray(y * sprite.width, y * sprite.width + copyWidth), y * width);
+      for (let y = Math.max(0, dy); y < Math.min(height, dy + sprite.height); y++) {
+        const row = (y - dy) * sprite.width - dx;
+        if (right > left) resized.set(cel.subarray(row + left, row + right), y * width + left);
       }
       return resized;
     });
   }
+  sprite.path.points = sprite.path.points.map(({ x, y }) => ({ x: x + dx, y: y + dy }));
+  sprite.width = width;
+  sprite.height = height;
+}
+
+/**
+ * 그림을 새 크기로 늘리거나 줄인다(해상도 변경). 너비와 높이를 따로 바꿔 비율을 바꿀 수도 있다.
+ * 픽셀은 팔레트 색만 가질 수 있으므로 색을 섞지 않고, 새 픽셀마다 그 중심에 가장 가까운 원래 픽셀을 가져온다(최근접 이웃).
+ * 벡터 패스의 점도 같은 비율로 옮긴다.
+ */
+export function scaleSprite(sprite: Sprite, width: number, height: number): void {
+  assertSize(width, height);
+  const columns = Array.from({ length: width }, (_, x) => Math.floor(((x + 0.5) * sprite.width) / width));
+  const rows = Array.from({ length: height }, (_, y) => Math.floor(((y + 0.5) * sprite.height) / height));
+  for (const frame of sprite.frames) {
+    frame.cels = frame.cels.map((cel) => {
+      const scaled = new Uint8Array(width * height);
+      for (let y = 0; y < height; y++) {
+        for (let x = 0; x < width; x++) scaled[y * width + x] = cel[rows[y] * sprite.width + columns[x]];
+      }
+      return scaled;
+    });
+  }
+  const [scaleX, scaleY] = [width / sprite.width, height / sprite.height];
+  sprite.path.points = sprite.path.points.map(({ x, y }) => ({ x: x * scaleX, y: y * scaleY }));
   sprite.width = width;
   sprite.height = height;
 }

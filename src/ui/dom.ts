@@ -15,3 +15,8 @@ export function download(data: BlobPart, type: string, filename: string): void {
   h('a', { href: url, download: filename }).click();
   setTimeout(() => URL.revokeObjectURL(url), 1000);
 }
+
+/** 키 입력이 입력창이나 열린 대화창으로 가는지. 이때는 단축키와 스페이스바 화면 이동을 쓰지 않는다. */
+export function isFormKey(event: KeyboardEvent): boolean {
+  return event.target instanceof HTMLInputElement || document.querySelector('dialog[open]') !== null;
+}
