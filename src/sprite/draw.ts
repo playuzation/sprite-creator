@@ -1,3 +1,5 @@
+import { TRANSPARENT } from './model';
+
 /** 한 셀(레이어의 픽셀 배열)에 그리는 알고리즘. 캔버스와 clip(선택 영역) 밖의 픽셀은 바꾸지 않는다. */
 
 /** 픽셀 단위 직사각형 영역 */
@@ -61,5 +63,31 @@ export function floodFill(cel: Uint8Array, width: number, x: number, y: number, 
     if (canPaint(cel, width, column + 1, row, clip)) stack.push(i + 1);
     if (canPaint(cel, width, column, row - 1, clip)) stack.push(i - width);
     if (canPaint(cel, width, column, row + 1, clip)) stack.push(i + width);
+  }
+}
+
+/** cel의 rect 영역 픽셀을 복사한다. 캔버스 밖 부분은 투명이다. */
+export function copyRegion(cel: Uint8Array, width: number, rect: Rect): Uint8Array<ArrayBuffer> {
+  const pixels = new Uint8Array(rect.width * rect.height);
+  for (let y = 0; y < rect.height; y++) {
+    for (let x = 0; x < rect.width; x++) {
+      if (canPaint(cel, width, rect.x + x, rect.y + y)) pixels[y * rect.width + x] = cel[(rect.y + y) * width + rect.x + x];
+    }
+  }
+  return pixels;
+}
+
+/**
+ * pixels(rect 크기)를 cel의 rect 위치에 쓴다. 캔버스 밖 부분은 버린다.
+ * overwrite가 false면 투명 픽셀은 쓰지 않아 그 자리의 원래 픽셀이 보인다.
+ */
+export function pasteRegion(cel: Uint8Array, width: number, rect: Rect, pixels: Uint8Array, overwrite: boolean): void {
+  for (let y = 0; y < rect.height; y++) {
+    for (let x = 0; x < rect.width; x++) {
+      const value = pixels[y * rect.width + x];
+      if ((overwrite || value !== TRANSPARENT) && canPaint(cel, width, rect.x + x, rect.y + y)) {
+        cel[(rect.y + y) * width + rect.x + x] = value;
+      }
+    }
   }
 }

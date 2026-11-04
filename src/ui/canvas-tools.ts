@@ -1,4 +1,5 @@
 import { TRANSPARENT, drawLine, floodFill, type Point } from '../sprite';
+import { moveSelectionTo } from './commands';
 import type { Store } from './store';
 
 /** 포인터를 누른 채 이어지는 도구 작업. 화면 이동으로 바뀌면(두 번째 손가락) cancel로 되돌린다. */
@@ -49,8 +50,29 @@ export function startGesture(store: Store, point: Point, zoom: number, redraw: (
       return { move: () => {}, cancel: restore };
     }
     case 'select': {
-      // 끌어서 직사각형을 고른다. 끌지 않고 클릭만 하면 선택이 해제된다.
       const [x0, y0] = pixel(point);
+      // 선택 영역 안을 끌면 현재 레이어의 그 픽셀을 옮긴다.
+      const inside =
+        selection &&
+        x0 >= selection.x &&
+        x0 < selection.x + selection.width &&
+        y0 >= selection.y &&
+        y0 < selection.y + selection.height;
+      if (inside) {
+        const { restore } = editCel();
+        const { floating } = store;
+        return {
+          move: (p) => {
+            const [px, py] = pixel(p);
+            store.update(() => moveSelectionTo(store, selection.x + px - x0, selection.y + py - y0));
+          },
+          cancel: () => {
+            restore();
+            store.update(() => ((store.selection = selection), (store.floating = floating)));
+          },
+        };
+      }
+      // 밖을 끌면 새 직사각형을 고른다. 끌지 않고 클릭만 하면 선택이 해제된다.
       store.update(() => (store.selection = undefined));
       return {
         move: (p) => {
@@ -66,13 +88,14 @@ export function startGesture(store: Store, point: Point, zoom: number, redraw: (
     }
     case 'vector': {
       // 가까운 점이 있으면 그 점을 옮기고, 없으면 새 점을 찍어 끄는 대로 옮긴다.
-      const previous = [...store.path];
-      let index = store.path.findIndex((p) => Math.hypot(p.x - point.x, p.y - point.y) * zoom <= HANDLE_REACH);
-      if (index < 0) store.update(() => (index = store.path.push(point) - 1));
-      const start = store.path[index];
+      const { points } = sprite.path;
+      const previous = [...points];
+      let index = points.findIndex((p) => Math.hypot(p.x - point.x, p.y - point.y) * zoom <= HANDLE_REACH);
+      if (index < 0) store.update(() => (index = points.push(point) - 1));
+      const start = points[index];
       return {
-        move: (p) => store.update(() => (store.path[index] = { x: start.x + p.x - point.x, y: start.y + p.y - point.y })),
-        cancel: () => store.update(() => (store.path = previous)),
+        move: (p) => store.update(() => (points[index] = { x: start.x + p.x - point.x, y: start.y + p.y - point.y })),
+        cancel: () => store.update(() => (sprite.path.points = previous)),
       };
     }
   }

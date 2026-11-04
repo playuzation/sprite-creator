@@ -1,4 +1,5 @@
-import { MAX_SIZE, createSprite, exportGif, loadProject, renderFrameRGBA, resizeSprite, saveProject } from '../sprite';
+import { MAX_SIZE, createSprite, exportGif, loadProject, renderFrameRGBA, resizeSprite } from '../sprite';
+import { saveFile } from './commands';
 import { download, h } from './dom';
 import type { Store } from './store';
 
@@ -21,11 +22,6 @@ export function createFileMenu(store: Store): HTMLElement {
       alert(`불러오기에 실패했습니다: ${(error as Error).message}`);
     }
   };
-  const save = () =>
-    saveProject(store.sprite).then(
-      (json) => download(json, 'application/json', 'sprite.json'),
-      (error: Error) => alert(`저장에 실패했습니다: ${error.message}`),
-    );
   const resize = () => {
     const [newWidth, newHeight] = [Number(width.value), Number(height.value)];
     const shrinking = newWidth < store.sprite.width || newHeight < store.sprite.height;
@@ -64,7 +60,7 @@ export function createFileMenu(store: Store): HTMLElement {
     h('button', { textContent: '크기 변경', onclick: resize }),
     h('span', { className: 'divider' }),
     h('button', { textContent: '불러오기', title: '프로젝트 파일(JSON) 열기', onclick: () => fileInput.click() }),
-    h('button', { textContent: '저장', title: '프로젝트 파일(JSON)로 저장', onclick: save }),
+    h('button', { textContent: '저장', title: '프로젝트 파일(JSON)로 저장 (Ctrl+S)', onclick: () => saveFile(store) }),
     h('span', { className: 'divider' }),
     h('button', { textContent: 'PNG 내보내기', title: '현재 프레임을 투명 배경 PNG로 저장', onclick: exportPng }),
     h('button', {

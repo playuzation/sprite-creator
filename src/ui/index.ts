@@ -3,13 +3,14 @@ import { h } from './dom';
 import { createFileMenu } from './file-menu';
 import { createLayerPanel } from './layer-panel';
 import { createPalettePanel } from './palette-panel';
+import { bindShortcuts } from './shortcuts';
 import { Store } from './store';
 import { createTimelinePanel } from './timeline-panel';
 import { createToolPanel } from './tool-panel';
 
 /**
  * ui 패키지: DOM 편집기. 하위 패키지는 sprite 하나뿐이며 sprite/index의 공개 API만 사용한다.
- * 패키지 안에서는 index(조립) → 각 패널 → store, dom 방향으로만 의존한다.
+ * 패키지 안에서는 index(조립) → 각 패널·단축키 → commands(편집 명령) → store, dom 방향으로만 의존한다.
  */
 export function mountApp(root: HTMLElement): void {
   const store = new Store();
@@ -24,5 +25,6 @@ export function mountApp(root: HTMLElement): void {
     ),
     createTimelinePanel(store),
   );
+  bindShortcuts(store);
   store.update();
 }

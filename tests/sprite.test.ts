@@ -2,6 +2,8 @@ import { describe, expect, it } from 'vitest';
 import {
   MAX_COLORS,
   addColor,
+  copyRegion,
+  pasteRegion,
   addLayer,
   compositeFrame,
   createSprite,
@@ -152,5 +154,20 @@ describe('draw', () => {
     expect([...cel]).toEqual([2, 1, 0, 2, 1, 0, 0, 0, 0]);
     floodFill(cel, 3, 0, 2, 2, { x: 0, y: 0, width: 3, height: 2 });
     expect(cel[6]).toBe(0);
+  });
+
+  it('영역을 복사하고 붙인다 (캔버스 밖은 투명/버림, overwrite가 false면 투명은 아래가 보임)', () => {
+    // prettier-ignore
+    const cel = new Uint8Array([
+      1, 2, 0,
+      3, 0, 4,
+    ]);
+    expect([...copyRegion(cel, 3, { x: 1, y: 0, width: 3, height: 2 })]).toEqual([2, 0, 0, 0, 4, 0]);
+
+    const target = new Uint8Array(6).fill(9);
+    pasteRegion(target, 3, { x: 1, y: 1, width: 2, height: 2 }, Uint8Array.of(1, 0, 2, 3), false);
+    expect([...target]).toEqual([9, 9, 9, 9, 1, 9]);
+    pasteRegion(target, 3, { x: 1, y: 1, width: 2, height: 2 }, Uint8Array.of(1, 0, 2, 3), true);
+    expect([...target]).toEqual([9, 9, 9, 9, 1, 0]);
   });
 });
