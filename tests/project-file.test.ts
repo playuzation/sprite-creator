@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { addLayer, createSprite, duplicateFrame, loadProject, saveProject } from '../src/sprite';
+import { addLayer, createPath, createSprite, duplicateFrame, loadProject, saveProject } from '../src/sprite';
 
 function sampleSprite() {
   const sprite = createSprite(64, 32);
@@ -10,6 +10,7 @@ function sampleSprite() {
   duplicateFrame(sprite, 0);
   sprite.frames[1].cels[0][0] = 7;
   sprite.fps = 12;
+  sprite.path = { points: [{ x: 1.5, y: 2.25 }, { x: 30, y: 20.5 }], curve: true, width: 3, antialias: true };
   return sprite;
 }
 
@@ -19,6 +20,12 @@ describe('project file', () => {
     const json = await saveProject(sprite);
     expect(JSON.parse(json)).toMatchObject({ format: 'sprite-creator', version: 1, width: 64, height: 32, fps: 12 });
     expect(await loadProject(json)).toEqual(sprite);
+  });
+
+  it('패스가 없는 예전 파일은 빈 패스로 읽는다', async () => {
+    const legacy = JSON.parse(await saveProject(sampleSprite()));
+    delete legacy.path;
+    expect((await loadProject(JSON.stringify(legacy))).path).toEqual(createPath());
   });
 
   it('1024x1024 빈 캔버스도 작게 저장된다', async () => {
@@ -43,6 +50,9 @@ describe('project file', () => {
       { ...valid, frames: [{ cels: otherSize.frames[0].cels.concat(otherSize.frames[0].cels) }] },
       { ...valid, frames: [{ cels: ['!!!', valid.frames[0].cels[1]] }] },
       { ...valid, palette: ['#000000'] },
+      { ...valid, path: { ...valid.path, width: 0 } },
+      { ...valid, path: { ...valid.path, points: [{ x: 'a', y: 1 }] } },
+      { ...valid, path: { ...valid.path, curve: 'yes' } },
     ];
     for (const file of broken) {
       await expect(loadProject(typeof file === 'string' ? file : JSON.stringify(file))).rejects.toThrow();

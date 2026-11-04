@@ -2,6 +2,7 @@
  * 스프라이트 문서 모델.
  * 픽셀 값 0은 투명(빈 배경), n(1~32)은 palette[n - 1] 색을 뜻한다.
  * 레이어 구성(이름/표시 여부/순서)은 모든 프레임이 공유하고, 픽셀(셀)은 프레임마다 따로 가진다.
+ * 벡터 패스는 픽셀과 따로 문서에 저장되며, 그릴 때(drawPath) 픽셀로 바뀐다.
  */
 
 export const DEFAULT_SIZE = 128;
@@ -10,6 +11,7 @@ export const MAX_COLORS = 32;
 export const MIN_FPS = 1;
 export const MAX_FPS = 30;
 export const TRANSPARENT = 0;
+export const MAX_STROKE_WIDTH = 32;
 
 export interface Layer {
   name: string;
@@ -21,6 +23,22 @@ export interface Frame {
   cels: Uint8Array<ArrayBuffer>[];
 }
 
+/** 픽셀 좌표의 점 (소수 가능). 픽셀 (i, j)의 중심은 (i + 0.5, j + 0.5)이다. */
+export interface Point {
+  x: number;
+  y: number;
+}
+
+/** 벡터 도구의 패스 */
+export interface VectorPath {
+  points: Point[];
+  /** 점들을 모두 지나는 부드러운 곡선으로 그릴지 */
+  curve: boolean;
+  /** 선 두께 (픽셀, 1~MAX_STROKE_WIDTH) */
+  width: number;
+  antialias: boolean;
+}
+
 export interface Sprite {
   width: number;
   height: number;
@@ -30,6 +48,7 @@ export interface Sprite {
   layers: Layer[];
   frames: Frame[];
   fps: number;
+  path: VectorPath;
 }
 
 /** DawnBringer 16 팔레트 */
@@ -62,7 +81,13 @@ export function createSprite(width = DEFAULT_SIZE, height = DEFAULT_SIZE): Sprit
     layers: [{ name: '레이어 1', visible: true }],
     frames: [{ cels: [new Uint8Array(width * height)] }],
     fps: 10,
+    path: createPath(),
   };
+}
+
+/** 점이 없는 기본 패스 (직선, 두께 1, 안티에일리어싱 끔) */
+export function createPath(): VectorPath {
+  return { points: [], curve: false, width: 1, antialias: false };
 }
 
 /** 왼쪽 위를 기준으로 캔버스 크기를 바꾼다. 벗어난 픽셀은 잘리고 늘어난 영역은 투명하다. */

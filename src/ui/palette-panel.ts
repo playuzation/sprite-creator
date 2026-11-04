@@ -47,7 +47,11 @@ export function createPalettePanel(store: Store): HTMLElement {
         textContent: '색 삭제',
         onclick: () =>
           confirm('이 색을 쓰는 픽셀은 투명해집니다. 삭제할까요?') &&
-          store.update(() => removeColor(store.sprite, store.color)),
+          store.update(() => {
+            removeColor(store.sprite, store.color);
+            // 옮기던 선택 영역 아래에 가려진 픽셀은 색 번호가 바뀌지 않았으므로 더 이상 되살리지 않는다.
+            store.floating = undefined;
+          }),
       }),
     ),
   );

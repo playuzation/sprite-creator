@@ -205,7 +205,15 @@ input[type='color'] {
   gap: 6px;
 }
 
-/* 다른 도구일 때도 자리를 차지하게 해, 도구를 바꿔도 캔버스 위치가 움직이지 않게 한다. */
+/* 도구별 옵션을 한 자리에 겹쳐 두고, 다른 도구일 때도 자리를 차지하게 해 도구를 바꿔도 캔버스 위치가 움직이지 않게 한다. */
+.tool-options-stack {
+  display: grid;
+}
+
+.tool-options-stack > .tool-options {
+  grid-area: 1 / 1;
+}
+
 .tool-options.inactive {
   visibility: hidden;
 }

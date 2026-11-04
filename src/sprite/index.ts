@@ -3,8 +3,8 @@
  * 하위 패키지는 codec 하나뿐이며, 상위(ui)는 이 파일로 공개된 API만 사용한다.
  */
 export * from './model';
-export { drawLine, floodFill, type Rect } from './draw';
-export { drawPath, type Point } from './vector';
+export { copyRegion, drawLine, floodFill, pasteRegion, type Rect } from './draw';
+export { drawPath, pathPoints } from './vector';
 export { compositeFrame, renderFrameRGBA } from './render';
 export { saveProject, loadProject } from './project-file';
 export { exportGif } from './gif-export';
