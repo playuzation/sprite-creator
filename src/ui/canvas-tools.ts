@@ -1,6 +1,6 @@
-import { TRANSPARENT, drawLine, floodFill, type Point } from '../sprite';
-import { moveSelectionTo } from './commands';
-import type { Store } from './store';
+import { TRANSPARENT, distanceToPath, drawLine, floodFill, type Point, type VectorShape } from '../sprite';
+import { moveSelectionTo, onVectorLayer } from './commands';
+import type { Store, Tool } from './store';
 
 /** 포인터를 누른 채 이어지는 도구 작업. 화면 이동으로 바뀌면(두 번째 손가락) cancel로 되돌린다. */
 export interface Gesture {
@@ -10,13 +10,22 @@ export interface Gesture {
 
 /** 벡터 점을 잡을 수 있는 거리 (화면 픽셀) */
 const HANDLE_REACH = 8;
+/** 픽셀을 칠하는 도구. 벡터 레이어에서는 쓸 수 없다. */
+const PAINT_TOOLS: Tool[] = ['pencil', 'eraser', 'fill'];
+
+/** 현재 레이어에서 현재 도구를 쓸 수 있는지 */
+export function canUseTool(store: Store): boolean {
+  return !onVectorLayer(store) || !PAINT_TOOLS.includes(store.tool);
+}
 
 /**
  * point(픽셀 좌표)에서 현재 도구의 작업을 시작한다.
  * 그리기 도구는 선택 영역이 있으면 그 안의 픽셀만 바꾼다. redraw는 캔버스를 다시 그린다.
+ * 벡터 레이어에서는 칠하기·픽셀 옮기기 대신 벡터 도구로 도형을 편집한다.
  */
 export function startGesture(store: Store, point: Point, zoom: number, redraw: () => void): Gesture {
   const { sprite, selection } = store;
+  if (!canUseTool(store)) return { move: () => {}, cancel: () => {} };
   const pixel = (p: Point): [number, number] => [Math.floor(p.x), Math.floor(p.y)];
   // 셀을 바꾸는 도구는 시작 전 셀을 복사해 두었다가, 취소하면 되돌린다.
   const editCel = () => {
@@ -51,8 +60,9 @@ export function startGesture(store: Store, point: Point, zoom: number, redraw: (
     }
     case 'select': {
       const [x0, y0] = pixel(point);
-      // 선택 영역 안을 끌면 현재 레이어의 그 픽셀을 옮긴다.
+      // 선택 영역 안을 끌면 현재 레이어의 그 픽셀을 옮긴다 (픽셀 레이어만).
       const inside =
+        !onVectorLayer(store) &&
         selection &&
         x0 >= selection.x &&
         x0 < selection.x + selection.width &&
@@ -87,6 +97,7 @@ export function startGesture(store: Store, point: Point, zoom: number, redraw: (
       };
     }
     case 'vector': {
+      if (onVectorLayer(store)) return editShape(store, point, zoom);
       // 가까운 점이 있으면 그 점을 옮기고, 없으면 새 점을 찍어 끄는 대로 옮긴다.
       const { points } = sprite.path;
       const previous = [...points];
@@ -99,4 +110,40 @@ export function startGesture(store: Store, point: Point, zoom: number, redraw: (
       };
     }
   }
+}
+
+/**
+ * 벡터 레이어의 도형 편집. 편집 중인 도형의 점 근처를 끌면 그 점을 옮기고, 다른 도형의 선을 누르면 그 도형을 고른다
+ * (점 근처면 그 점을 바로 옮김). 빈 곳을 누르면 편집 중인 도형에 점을 이어 찍고, 없으면 현재 색과 벡터 도구 설정으로 새 도형을 시작한다.
+ */
+function editShape(store: Store, point: Point, zoom: number): Gesture {
+  const { sprite } = store;
+  const shapes = sprite.frames[store.frame].shapes[store.layer];
+  const reach = HANDLE_REACH / zoom;
+  const near = (p: Point) => Math.hypot(p.x - point.x, p.y - point.y) <= reach;
+  const previous = { shapes: [...shapes], shape: store.shape, color: store.color };
+  // 위에 그린 도형부터 찾는다.
+  const hit = store.shape?.points.some(near)
+    ? undefined
+    : [...shapes].reverse().find((s) => s !== store.shape && distanceToPath(s, point) <= s.width / 2 + reach);
+  const shape: VectorShape = hit ?? store.shape ?? { ...sprite.path, points: [], color: store.color + 1 };
+  const points = [...shape.points];
+  let index = points.findIndex(near);
+  store.update(() => {
+    if (!shapes.includes(shape)) shapes.push(shape);
+    store.shape = shape;
+    store.color = shape.color - 1;
+    if (index < 0 && !hit) index = shape.points.push(point) - 1;
+  });
+  const start = shape.points[index];
+  return {
+    move: (p) => start && store.update(() => (shape.points[index] = { x: start.x + p.x - point.x, y: start.y + p.y - point.y })),
+    cancel: () =>
+      store.update(() => {
+        shapes.splice(0, shapes.length, ...previous.shapes);
+        shape.points = points;
+        store.shape = previous.shape;
+        store.color = previous.color;
+      }),
+  };
 }

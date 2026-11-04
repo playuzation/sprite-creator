@@ -2,7 +2,7 @@ import { addLayer, moveLayer, removeLayer } from '../sprite';
 import { h } from './dom';
 import type { Store } from './store';
 
-/** 레이어 목록(위쪽 레이어가 위에 표시): 선택, 보이기, 추가, 삭제, 이름 변경, 순서 변경 */
+/** 레이어 목록(위쪽 레이어가 위에 표시): 선택, 보이기, 추가(픽셀·벡터), 삭제, 이름 변경, 순서 변경 */
 export function createLayerPanel(store: Store): HTMLElement {
   const list = h('ul', { className: 'list' });
   const moveBy = (offset: number) =>
@@ -32,6 +32,7 @@ export function createLayerPanel(store: Store): HTMLElement {
         { className: i === store.layer ? 'active' : '', onclick: () => store.update(() => (store.layer = i)) },
         visible,
         layer.name,
+        ...(layer.kind === 'vector' ? [h('span', { className: 'layer-kind', textContent: '벡터' })] : []),
       );
     });
     list.replaceChildren(...items.reverse());
@@ -47,7 +48,17 @@ export function createLayerPanel(store: Store): HTMLElement {
       { className: 'row' },
       h('button', {
         textContent: '추가',
+        title: '픽셀 레이어 추가',
         onclick: () => store.update(() => addLayer(store.sprite, ++store.layer)),
+      }),
+      h('button', {
+        textContent: '벡터 추가',
+        title: '벡터 레이어 추가: 벡터 도구로 그린 도형을 픽셀로 굽지 않고 계속 편집할 수 있게 보관',
+        onclick: () =>
+          store.update(() => {
+            addLayer(store.sprite, ++store.layer, 'vector');
+            store.tool = 'vector';
+          }),
       }),
       h('button', {
         textContent: '삭제',

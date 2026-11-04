@@ -1,4 +1,4 @@
-import { exportAvif, exportGif, exportWebp, renderFrameRGBA, type Sprite } from '../sprite';
+import { canExportSvg, exportAvif, exportGif, exportSvg, exportWebp, renderFrameRGBA, type Sprite } from '../sprite';
 import { download, h } from './dom';
 import type { Store } from './store';
 
@@ -8,6 +8,8 @@ interface Format {
   type: string;
   /** 모든 프레임을 담는 애니메이션인지 (아니면 현재 프레임 한 장) */
   animated: boolean;
+  /** 지금 그림을 이 형식으로 내보낼 수 있는지 (없으면 언제나 가능) */
+  available?(sprite: Sprite): boolean;
   encode(store: Store): BlobPart | Promise<BlobPart>;
 }
 
@@ -19,12 +21,24 @@ const FORMATS: Format[] = [
   { label: 'JPG (흰 배경)', extension: 'jpg', type: 'image/jpeg', animated: false, encode: (store) => canvasImage(store, 'image/jpeg', '#ffffff') },
   { label: 'WebP', extension: 'webp', type: 'image/webp', animated: false, encode: (store) => exportWebp(store.sprite, [store.frame]) },
   { label: 'AVIF', extension: 'avif', type: 'image/avif', animated: false, encode: (store) => exportAvif(store.sprite, [store.frame]) },
+  // SVG는 벡터 도형만 담으므로 보이는 레이어가 모두 벡터 레이어여야 한다.
+  {
+    label: 'SVG (벡터 레이어만)',
+    extension: 'svg',
+    type: 'image/svg+xml',
+    animated: false,
+    available: canExportSvg,
+    encode: (store) => exportSvg(store.sprite, store.frame),
+  },
   { label: 'GIF 애니메이션', extension: 'gif', type: 'image/gif', animated: true, encode: (store) => exportGif(store.sprite) },
   { label: 'WebP 애니메이션', extension: 'webp', type: 'image/webp', animated: true, encode: (store) => exportWebp(store.sprite, allFrames(store.sprite)) },
   { label: 'AVIF 애니메이션', extension: 'avif', type: 'image/avif', animated: true, encode: (store) => exportAvif(store.sprite, allFrames(store.sprite)) },
 ];
 
-/** 현재 프레임 이미지(PNG·JPG·WebP·AVIF)나 모든 프레임 애니메이션(GIF·WebP·AVIF)으로 내보내는 메뉴 */
+/**
+ * 현재 프레임 이미지(PNG·JPG·WebP·AVIF·SVG)나 모든 프레임 애니메이션(GIF·WebP·AVIF)으로 내보내는 메뉴.
+ * 지금 그림으로 만들 수 없는 형식은 고를 수 없게 한다.
+ */
 export function createExportMenu(store: Store): HTMLElement {
   const option = (format: Format) => h('option', { value: String(FORMATS.indexOf(format)), textContent: format.label });
   const select = h(
@@ -33,6 +47,11 @@ export function createExportMenu(store: Store): HTMLElement {
     h('optgroup', { label: '현재 프레임 이미지' }, ...FORMATS.filter((format) => !format.animated).map(option)),
     h('optgroup', { label: '애니메이션 (모든 프레임)' }, ...FORMATS.filter((format) => format.animated).map(option)),
   );
+  store.subscribe(() => {
+    for (const element of select.querySelectorAll('option')) {
+      element.disabled = !(FORMATS[Number(element.value)].available?.(store.sprite) ?? true);
+    }
+  });
   const button = h('button', { textContent: '내보내기', title: '투명 배경으로 내보내기 (JPG는 흰 배경)' });
   button.onclick = async () => {
     const format = FORMATS[Number(select.value)];

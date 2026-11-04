@@ -178,6 +178,11 @@ input[type='color'] {
   touch-action: none;
 }
 
+/* 벡터 레이어에서는 픽셀을 칠하는 도구를 쓸 수 없다. */
+.viewport.locked .sprite-canvas {
+  cursor: not-allowed;
+}
+
 .viewport.panning,
 .viewport.panning .sprite-canvas {
   cursor: grab;
@@ -274,6 +279,16 @@ input[type='color'] {
   border: 1px solid var(--border);
   border-radius: 4px;
   cursor: pointer;
+}
+
+/* 레이어 종류 표시 (벡터 레이어) */
+.layer-kind {
+  margin-left: auto;
+  padding: 0 4px;
+  font-size: 11px;
+  color: var(--muted);
+  border: 1px solid var(--border);
+  border-radius: 3px;
 }
 
 .frames {

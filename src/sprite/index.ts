@@ -4,7 +4,7 @@
  */
 export * from './model';
 export { copyRegion, drawLine, floodFill, pasteRegion, type Rect } from './draw';
-export { drawPath, pathPoints } from './vector';
-export { compositeFrame, renderFrameRGBA } from './render';
+export { distanceToPath, pathPoints } from './vector';
+export { compositeFrame, drawPath, renderFrameRGBA } from './render';
 export { saveProject, loadProject } from './project-file';
-export { exportAvif, exportGif, exportWebp } from './export';
+export { canExportSvg, exportAvif, exportGif, exportSvg, exportWebp } from './export';
