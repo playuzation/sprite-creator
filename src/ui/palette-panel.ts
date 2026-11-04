@@ -1,8 +1,9 @@
 import { MAX_COLORS, addColor, removeColor, setColor } from '../sprite';
+import { pickColor } from './commands';
 import { h } from './dom';
 import type { Store } from './store';
 
-/** 스프라이트 팔레트(최대 32색): 색 선택, 편집, 추가, 삭제 */
+/** 스프라이트 팔레트(최대 32색): 색 선택(편집 중인 도형이 있으면 그 색도 바꿈), 편집, 추가, 삭제 */
 export function createPalettePanel(store: Store): HTMLElement {
   const title = h('h2');
   const swatches = h('div', { className: 'swatches' });
@@ -20,7 +21,7 @@ export function createPalettePanel(store: Store): HTMLElement {
         const swatch = h('button', {
           className: i === store.color ? 'swatch active' : 'swatch',
           title: color,
-          onclick: () => store.update(() => (store.color = i)),
+          onclick: () => store.update(() => pickColor(store, i)),
         });
         swatch.style.background = color;
         return swatch;
@@ -46,8 +47,12 @@ export function createPalettePanel(store: Store): HTMLElement {
       h('button', {
         textContent: '색 삭제',
         onclick: () =>
-          confirm('이 색을 쓰는 픽셀은 투명해집니다. 삭제할까요?') &&
-          store.update(() => removeColor(store.sprite, store.color)),
+          confirm('이 색을 쓰는 픽셀은 투명해지고, 이 색의 도형은 지워집니다. 삭제할까요?') &&
+          store.update(() => {
+            removeColor(store.sprite, store.color);
+            // 옮기던 선택 영역 아래에 가려진 픽셀은 색 번호가 바뀌지 않았으므로 더 이상 되살리지 않는다.
+            store.floating = undefined;
+          }),
       }),
     ),
   );
