@@ -273,6 +273,7 @@ input[type='color'] {
 
 .list li {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   gap: 8px;
   padding: 4px 8px;
@@ -342,7 +343,7 @@ input[type='color'] {
   padding: 4px 0;
 }
 
-.size-dialog .hint {
+.hint {
   margin-bottom: 0;
   font-size: 12px;
   color: var(--muted);

@@ -12,8 +12,9 @@ export function compositeFrame(sprite: Sprite, frameIndex: number, count = sprit
   for (let layer = 0; layer < count; layer++) {
     if (!sprite.layers[layer].visible) continue;
     const cel = sprite.layers[layer].kind === 'vector' ? drawShapes(sprite, frame.shapes[layer], out) : frame.cels[layer];
+    const mask = sprite.layers[layer].maskEnabled === false ? undefined : frame.masks?.[layer];
     for (let i = 0; i < out.length; i++) {
-      if (cel[i] !== TRANSPARENT) out[i] = cel[i];
+      if (cel[i] !== TRANSPARENT && (!mask || mask[i])) out[i] = cel[i];
     }
   }
   return out;
@@ -48,6 +49,7 @@ function sameBytes(a: Uint8Array, b: Uint8Array): boolean {
  * 안티에일리어싱은 현재 레이어의 픽셀(숨겨져 있어도), 없으면 아래 레이어들에 보이는 픽셀과 섞는다.
  */
 export function drawPath(sprite: Sprite, frame: number, layer: number, path: VectorPath, value: number, clip?: Rect): void {
+  if (sprite.layers[layer].locked) return;
   const cel = sprite.frames[frame].cels[layer];
   const base = compositeFrame(sprite, frame, layer);
   strokePath(cel, sprite.width, sprite.palette, path, value, (i) => cel[i] || base[i], clip);

@@ -1,6 +1,7 @@
 import { MAX_STROKE_WIDTH } from '../sprite';
 import {
   clearPath,
+  isLocked,
   copySelection,
   deleteShape,
   deselect,
@@ -106,18 +107,20 @@ export function createToolPanel(store: Store): HTMLElement {
     buttons.forEach((button, i) => button.classList.toggle('active', TOOLS[i][0] === store.tool));
     deselectButton.disabled = !store.selection;
     // 벡터 레이어에는 픽셀이 없어 복사·붙여넣기를 쓸 수 없다.
-    copy.disabled = !store.selection || vectorLayer;
-    paste.disabled = !store.clipboard || vectorLayer;
+    copy.disabled = !store.selection || vectorLayer || store.editMask;
+    paste.disabled = !store.clipboard || vectorLayer || store.editMask || isLocked(store);
     selectOptions.classList.toggle('inactive', store.tool !== 'select');
     vectorOptions.classList.toggle('inactive', store.tool !== 'vector');
     curve.checked = path.curve;
     antialias.checked = path.antialias;
     if (document.activeElement !== width) width.value = String(path.width);
-    render.disabled = store.sprite.path.points.length < 2;
+    curve.disabled = antialias.disabled = width.disabled = isLocked(store) || store.editMask;
+    clear.disabled = isLocked(store) || store.editMask;
+    render.disabled = isLocked(store) || store.editMask || store.sprite.path.points.length < 2;
     // 버튼 수가 같아 바꿔 보여도 패널 크기는 그대로다.
     render.hidden = clear.hidden = vectorLayer;
     finish.hidden = remove.hidden = !vectorLayer;
-    finish.disabled = remove.disabled = !store.shape;
+    finish.disabled = remove.disabled = !store.shape || isLocked(store) || store.editMask;
   });
   return h(
     'section',

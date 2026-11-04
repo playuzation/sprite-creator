@@ -16,6 +16,8 @@ const fit = (store: Store, rect: Rect, x: number, y: number): Rect => ({
 
 /** 현재 레이어가 벡터 레이어인지. 벡터 레이어의 그림은 벡터 도구로 편집하는 도형뿐이라 픽셀을 칠하거나 옮길 수 없다. */
 export const onVectorLayer = (store: Store) => store.sprite.layers[store.layer].kind === 'vector';
+export const isLocked = (store: Store) => !!store.sprite.layers[store.layer].locked;
+export const canEditPixels = (store: Store) => !isLocked(store) && !store.editMask && !onVectorLayer(store);
 
 /** 벡터 도구 설정(곡선·두께·안티에일리어싱)이 바꿀 패스: 편집 중인 도형, 없으면 픽셀 레이어의 패스이자 새 도형의 기본값 */
 export const editingPath = (store: Store): VectorPath => store.shape ?? store.sprite.path;
@@ -49,7 +51,7 @@ function stamp(store: Store, rect: Rect, pixels: Uint8Array): void {
 /** 현재 레이어에서 선택 영역의 픽셀을 (x, y) 위치로 옮긴다. 처음 옮길 때는 원래 자리를 투명하게 비운다. */
 export function moveSelectionTo(store: Store, x: number, y: number): void {
   const { selection, sprite } = store;
-  if (!selection || onVectorLayer(store)) return;
+  if (!selection || !canEditPixels(store)) return;
   const cel = currentCel(store);
   const floating = liveFloating(store);
   // 이미 옮기는 중이면 그 자리의 원래 픽셀을 되살리고, 아니면 선택 영역의 픽셀을 떼어 낸다.
@@ -61,7 +63,7 @@ export function moveSelectionTo(store: Store, x: number, y: number): void {
 /** 선택 영역에서 현재 레이어의 픽셀을 복사한다. */
 export function copySelection(store: Store): void {
   const { selection, sprite } = store;
-  if (!selection || onVectorLayer(store)) return;
+  if (!selection || store.editMask || onVectorLayer(store)) return;
   const pixels = liveFloating(store)?.pixels ?? copyRegion(currentCel(store), sprite.width, selection);
   store.clipboard = { rect: { ...selection }, pixels: pixels.slice() };
 }
@@ -69,7 +71,7 @@ export function copySelection(store: Store): void {
 /** 복사한 픽셀을 현재 레이어의 복사했던 위치에 붙인다. 붙인 픽셀은 선택 도구로 바로 끌어 옮길 수 있다. */
 export function pasteClipboard(store: Store): void {
   const { clipboard, sprite } = store;
-  if (!clipboard || onVectorLayer(store)) return;
+  if (!clipboard || !canEditPixels(store)) return;
   // 복사한 뒤 팔레트에서 지워진 색은 투명으로 붙인다.
   const pixels = clipboard.pixels.map((value) => (value > sprite.palette.length ? 0 : value));
   stamp(store, fit(store, clipboard.rect, clipboard.rect.x, clipboard.rect.y), pixels);
@@ -78,11 +80,12 @@ export function pasteClipboard(store: Store): void {
 
 /** 벡터 패스를 현재 레이어에 현재 색으로 그린다 (선택 영역이 있으면 그 안만). 패스는 남겨 둔다. */
 export function renderPath(store: Store): void {
-  if (store.sprite.path.points.length < 2) return;
+  if (isLocked(store) || store.editMask || store.sprite.path.points.length < 2) return;
   drawPath(store.sprite, store.frame, store.layer, store.sprite.path, store.color + 1, store.selection);
 }
 
 export function clearPath(store: Store): void {
+  if (isLocked(store) || store.editMask) return;
   store.sprite.path.points = [];
 }
 
@@ -93,6 +96,7 @@ export function finishShape(store: Store): void {
 
 /** 편집 중인 도형을 지운다. */
 export function deleteShape(store: Store): void {
+  if (isLocked(store) || store.editMask) return;
   const shapes = store.sprite.frames[store.frame].shapes[store.layer];
   if (store.shape && shapes.includes(store.shape)) shapes.splice(shapes.indexOf(store.shape), 1);
   store.shape = undefined;
@@ -101,7 +105,7 @@ export function deleteShape(store: Store): void {
 /** 팔레트 색을 고른다. 편집 중인 도형이 있으면 그 도형의 색도 바꾼다. */
 export function pickColor(store: Store, index: number): void {
   store.color = index;
-  if (store.shape) store.shape.color = index + 1;
+  if (store.shape && !isLocked(store) && !store.editMask) store.shape.color = index + 1;
 }
 
 /** 프로젝트 파일(JSON)로 내려받는다. */
