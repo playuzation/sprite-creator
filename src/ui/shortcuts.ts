@@ -1,4 +1,16 @@
-import { clearPath, copySelection, deselect, moveSelectionTo, pasteClipboard, renderPath, saveFile, selectAll } from './commands';
+import {
+  clearPath,
+  copySelection,
+  deleteShape,
+  deselect,
+  finishShape,
+  moveSelectionTo,
+  onVectorLayer,
+  pasteClipboard,
+  renderPath,
+  saveFile,
+  selectAll,
+} from './commands';
 import { isFormKey } from './dom';
 import type { Store, Tool } from './store';
 
@@ -46,9 +58,12 @@ function commandFor(store: Store, event: KeyboardEvent): Command | undefined {
   const tool = TOOL_KEYS.get(key);
   if (tool) return () => (store.tool = tool);
   if (key === 'escape') {
-    return store.tool === 'vector' && store.sprite.path.points.length > 0 ? clearPath : deselect;
+    if (store.shape) return finishShape;
+    return store.tool === 'vector' && !onVectorLayer(store) && store.sprite.path.points.length > 0 ? clearPath : deselect;
   }
-  if (key === 'enter' && store.tool === 'vector') return renderPath;
+  // 벡터 레이어에서는 도형 완료, 픽셀 레이어에서는 패스 그리기
+  if (key === 'enter' && store.tool === 'vector') return onVectorLayer(store) ? finishShape : renderPath;
+  if ((key === 'delete' || key === 'backspace') && store.shape) return deleteShape;
   // 방향키: 선택 영역의 픽셀을 1픽셀(Shift: 10픽셀)씩 옮긴다.
   const arrow = ARROWS.get(event.key);
   const { selection } = store;

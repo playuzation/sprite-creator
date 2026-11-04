@@ -1,4 +1,4 @@
-import { createSprite, type Rect, type Sprite } from '../sprite';
+import { createSprite, type Rect, type Sprite, type VectorShape } from '../sprite';
 
 export type Tool = 'pencil' | 'eraser' | 'fill' | 'select' | 'vector';
 
@@ -31,6 +31,8 @@ export class Store {
   floating: Floating | undefined = undefined;
   /** 복사한 픽셀과 복사한 위치 */
   clipboard: { rect: Rect; pixels: Uint8Array } | undefined = undefined;
+  /** 벡터 도구로 편집 중인, 현재 프레임·벡터 레이어의 도형 */
+  shape: VectorShape | undefined = undefined;
   private listeners: (() => void)[] = [];
 
   subscribe(listener: () => void): void {
@@ -53,6 +55,9 @@ export class Store {
       this.selection = undefined;
     }
     if (!this.selection) this.floating = undefined;
+    // 다른 도구·프레임·레이어로 바뀌었거나 지워진 도형은 더 이상 편집하지 않는다.
+    const shapes = sprite.frames[this.frame].shapes[this.layer];
+    if (this.tool !== 'vector' || (this.shape && !shapes.includes(this.shape))) this.shape = undefined;
     for (const listener of this.listeners) listener();
   }
 
@@ -61,7 +66,7 @@ export class Store {
     this.sprite = sprite;
     this.color = this.layer = this.frame = 0;
     this.playing = false;
-    this.selection = this.floating = this.clipboard = undefined;
+    this.selection = this.floating = this.clipboard = this.shape = undefined;
   }
 }
 

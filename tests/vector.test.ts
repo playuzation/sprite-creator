@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { addLayer, createPath, createSprite, drawLine, drawPath, pathPoints, type Point, type VectorPath } from '../src/sprite';
+import { addLayer, createPath, createSprite, distanceToPath, drawLine, drawPath, pathPoints, type Point, type VectorPath } from '../src/sprite';
 
 /** 흰 배경 레이어 위에 빈 레이어가 있는 스프라이트 (팔레트: 1 검정, 2 흰색, 3 회색) */
 function spriteOnWhite(width: number, height: number) {
@@ -58,6 +58,22 @@ describe('drawPath', () => {
     expect(rows(sprite.frames[0].cels[0], 4)).toEqual(['0000', '1111', '0000', '0000']);
   });
 
+  it('아래 벡터 레이어의 도형도 섞을 색으로 쓴다', () => {
+    const sprite = createSprite(4, 4);
+    sprite.palette = ['#000000', '#ffffff', '#808080'];
+    addLayer(sprite, 0, 'vector');
+    // 아래 벡터 레이어: 행 1·2를 지나는 흰 선 두 개
+    for (const y of [1.5, 2.5]) sprite.frames[0].shapes[0].push({ ...path([{ x: 0.5, y }, { x: 3.5, y }]), color: 2 });
+    drawPath(sprite, 0, 1, antialiased([{ x: 0.5, y: 2 }, { x: 3.5, y: 2 }]), 1);
+    expect(rows(sprite.frames[0].cels[1], 4)).toEqual(['0000', '3333', '3333', '0000']);
+  });
+
+  it('점이 하나면 그 자리에 붓 모양의 점을 찍는다', () => {
+    const sprite = createSprite(5, 5);
+    drawPath(sprite, 0, 0, path([{ x: 2.5, y: 2.5 }], { width: 3 }), 1);
+    expect(rows(sprite.frames[0].cels[0], 5)).toEqual(['00000', '00100', '01110', '00100', '00000']);
+  });
+
   it('선택 영역(clip) 밖의 픽셀은 바꾸지 않는다', () => {
     const clip = { x: 1, y: 0, width: 2, height: 4 };
     for (const antialias of [false, true]) {
@@ -108,5 +124,14 @@ describe('pathPoints', () => {
     drawPath(curved, 0, 0, path(points, { curve: true }), 1);
     expect(curved.frames[0].cels[0]).not.toEqual(straight.frames[0].cels[0]);
     for (const { x, y } of points) expect(curved.frames[0].cels[0][Math.floor(y) * 17 + Math.floor(x)]).toBe(1);
+  });
+});
+
+describe('distanceToPath', () => {
+  it('점과 패스(점이 하나면 그 점) 사이의 거리', () => {
+    const line = path([{ x: 0, y: 0 }, { x: 10, y: 0 }]);
+    expect(distanceToPath(line, { x: 5, y: 3 })).toBe(3);
+    expect(distanceToPath(line, { x: 13, y: 4 })).toBe(5);
+    expect(distanceToPath(path([{ x: 1, y: 1 }]), { x: 4, y: 5 })).toBe(5);
   });
 });

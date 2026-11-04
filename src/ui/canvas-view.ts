@@ -1,6 +1,6 @@
 import { renderFrameRGBA, type Point, type Sprite } from '../sprite';
 import { createOverlay } from './canvas-overlay';
-import { startGesture, type Gesture } from './canvas-tools';
+import { canUseTool, startGesture, type Gesture } from './canvas-tools';
 import { h, isFormKey } from './dom';
 import type { Store } from './store';
 
@@ -139,6 +139,7 @@ export function createCanvasView(store: Store): HTMLElement {
       shown = { sprite, width: sprite.width, height: sprite.height };
       fitZoom();
     }
+    viewport.classList.toggle('locked', !canUseTool(store));
     overlay.render(store, zoom);
     queueRender();
   });

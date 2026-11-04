@@ -1,6 +1,5 @@
-import { canPaint, drawLine, type Rect } from './draw';
-import { TRANSPARENT, type Point, type Sprite, type VectorPath } from './model';
-import { hexToRgb } from './render';
+import { canPaint, linePixels, type Rect } from './draw';
+import { TRANSPARENT, hexToRgb, type Point, type VectorPath } from './model';
 
 /**
  * 패스가 지나는 점들. 곡선이면 모든 점을 지나는 부드러운 곡선(캣멀-롬)을 잘게 나눈 점들이다.
@@ -10,11 +9,7 @@ export function pathPoints(path: VectorPath): Point[] {
   const { points } = path;
   if (!path.curve || points.length < 3) return points;
   const result = [points[0]];
-  for (let i = 0; i < points.length - 1; i++) {
-    // 앞뒤 이웃 점으로 이 구간(p1 → p2)의 3차 베지어 조절점을 만든다.
-    const [p0, p1, p2, p3] = [points[i - 1] ?? points[i], points[i], points[i + 1], points[i + 2] ?? points[i + 1]];
-    const c1 = { x: p1.x + (p2.x - p0.x) / 6, y: p1.y + (p2.y - p0.y) / 6 };
-    const c2 = { x: p2.x - (p3.x - p1.x) / 6, y: p2.y - (p3.y - p1.y) / 6 };
+  for (const [p1, c1, c2, p2] of bezierSegments(points)) {
     // 1픽셀 남짓한 간격으로 나눈다.
     const steps = Math.max(1, Math.ceil(distance(p1, c1) + distance(c1, c2) + distance(c2, p2)));
     for (let step = 1; step <= steps; step++) {
@@ -26,62 +21,124 @@ export function pathPoints(path: VectorPath): Point[] {
   return result;
 }
 
+/** 곡선의 구간(p1 → p2)마다 앞뒤 이웃 점으로 만든 3차 베지어 [p1, 조절점 1, 조절점 2, p2] */
+function bezierSegments(points: Point[]): [Point, Point, Point, Point][] {
+  return points.slice(0, -1).map((p1, i) => {
+    const [p0, p2, p3] = [points[i - 1] ?? p1, points[i + 1], points[i + 2] ?? points[i + 1]];
+    const c1 = { x: p1.x + (p2.x - p0.x) / 6, y: p1.y + (p2.y - p0.y) / 6 };
+    const c2 = { x: p2.x - (p3.x - p1.x) / 6, y: p2.y - (p3.y - p1.y) / 6 };
+    return [p1, c1, c2, p2];
+  });
+}
+
+/** 이웃한 점을 이은 선분들. 점이 하나면 길이가 0인 선분 하나로, 그 자리에 점이 찍힌다. */
+function segmentsOf(points: Point[]): [Point, Point][] {
+  return points.length === 1 ? [[points[0], points[0]]] : points.slice(1).map((to, i) => [points[i], to]);
+}
+
+/** SVG path 데이터 (곡선은 pathPoints와 같은 3차 베지어, 점이 하나면 길이 0인 선) */
+export function pathData(path: VectorPath): string {
+  const { points } = path;
+  const xy = ({ x, y }: Point) => `${Math.round(x * 1000) / 1000} ${Math.round(y * 1000) / 1000}`;
+  if (path.curve && points.length >= 3) {
+    return `M${xy(points[0])}${bezierSegments(points).map(([, c1, c2, p2]) => `C${xy(c1)} ${xy(c2)} ${xy(p2)}`).join('')}`;
+  }
+  return `M${(points.length === 1 ? [points[0], points[0]] : points).map(xy).join('L')}`;
+}
+
+/** 점 p와 패스(곡선이면 곡선) 사이의 거리 */
+export function distanceToPath(path: VectorPath, p: Point): number {
+  return Math.min(...segmentsOf(pathPoints(path)).map(([a, b]) => distanceToSegment(p.x, p.y, a, b)));
+}
+
 /**
- * 패스를 frame/layer의 셀에 value 색으로 그린다. clip 밖 픽셀은 바꾸지 않는다.
+ * 패스를 cel(한 행이 width 픽셀)에 value 색으로 그린다. clip 밖 픽셀은 바꾸지 않는다.
+ * below(i)는 i번 픽셀에 지금 보이는 값으로, 안티에일리어싱에서 선 색과 섞을 아래 색이다.
  * - 안티에일리어싱 끔: 점들을 브레젠험 직선으로 이은 1픽셀 뼈대를 따라 두께만큼 둥근 붓을 찍는다.
  * - 안티에일리어싱 켬: 픽셀 중심과 선 사이 거리로 선이 걸친 비율을 구하고, 그만큼 선 색과 그 아래 보이는 색을 섞은 색을
  *   두 색 사이에 있는 팔레트 색으로 칠한다. 픽셀은 팔레트 색만 가질 수 있으므로 사이 색이 없으면 선 색과 아래 색 중 하나가 되고,
  *   아래가 투명한 픽셀은 섞을 색이 없어 절반 이상 걸칠 때만 선 색으로 칠한다.
  */
-export function drawPath(sprite: Sprite, frame: number, layer: number, path: VectorPath, value: number, clip?: Rect): void {
-  const { width, height } = sprite;
-  const cel = sprite.frames[frame].cels[layer];
+export function strokePath(
+  cel: Uint8Array,
+  width: number,
+  palette: string[],
+  path: VectorPath,
+  value: number,
+  below: (index: number) => number,
+  clip?: Rect,
+): void {
+  const height = cel.length / width;
   const points = pathPoints(path);
-  const segments = points.slice(1).map((to, i) => [points[i], to] as const);
+  if (points.length === 0) return;
+  const segments = segmentsOf(points);
   if (!path.antialias) {
-    const skeleton = new Uint8Array(width * height);
-    for (const [from, to] of segments) {
-      drawLine(skeleton, width, Math.floor(from.x), Math.floor(from.y), Math.floor(to.x), Math.floor(to.y), 1);
-    }
+    // 뼈대를 따라 한 픽셀씩 붓을 옮겨 찍는다. 처음에만 붓 전체를, 그다음부터는 새로 덮이는 가장자리만 칠한다.
     const brush = roundBrush(path.width);
-    skeleton.forEach((on, i) => {
-      if (!on) return;
-      const [x, y] = [i % width, Math.floor(i / width)];
-      for (const [dx, dy] of brush) {
-        if (canPaint(cel, width, x + dx, y + dy, clip)) cel[(y + dy) * width + x + dx] = value;
-      }
-    });
+    const key = (x: number, y: number) => x * 1024 + y;
+    const inBrush = new Set(brush.map(([x, y]) => key(x, y)));
+    const edges = new Map<number, [number, number][]>();
+    const edge = (sx: number, sy: number) => {
+      if (!edges.has(key(sx, sy))) edges.set(key(sx, sy), brush.filter(([x, y]) => !inBrush.has(key(x + sx, y + sy))));
+      return edges.get(key(sx, sy))!;
+    };
+    let last: Point | undefined;
+    for (const [from, to] of segments) {
+      linePixels(Math.floor(from.x), Math.floor(from.y), Math.floor(to.x), Math.floor(to.y), (x, y) => {
+        for (const [dx, dy] of last ? edge(x - last.x, y - last.y) : brush) {
+          if (canPaint(cel, width, x + dx, y + dy, clip)) cel[(y + dy) * width + x + dx] = value;
+        }
+        last = { x, y };
+      });
+    }
     return;
   }
 
-  // 픽셀마다 선이 걸친 비율. 선분이 만나는 곳에서 진해지지 않도록 큰 값을 쓴다.
+  // 픽셀마다 선이 걸친 비율(패스를 둘러싼 직사각형 영역만 담음). 선분이 만나는 곳에서 진해지지 않도록 큰 값을 쓴다.
   const half = path.width / 2;
-  const coverage = new Map<number, number>();
+  const range = (values: number[], size: number) => [
+    Math.max(0, Math.floor(values.reduce((a, b) => Math.min(a, b)) - half - 1)),
+    Math.min(size - 1, Math.floor(values.reduce((a, b) => Math.max(a, b)) + half + 1)),
+  ];
+  const [left, right] = range(points.map((p) => p.x), width);
+  const [top, bottom] = range(points.map((p) => p.y), height);
+  const span = Math.max(0, right - left + 1);
+  const coverage = new Float64Array(span * Math.max(0, bottom - top + 1));
+  // 선이 걸칠 수 있는 거리(half + 0.5)에 계산 오차를 넉넉히 더한 값
+  const reach = half + 1.5;
   for (const [a, b] of segments) {
-    const left = Math.max(0, Math.floor(Math.min(a.x, b.x) - half - 1));
-    const right = Math.min(width - 1, Math.floor(Math.max(a.x, b.x) + half + 1));
-    const top = Math.max(0, Math.floor(Math.min(a.y, b.y) - half - 1));
-    const bottom = Math.min(height - 1, Math.floor(Math.max(a.y, b.y) + half + 1));
-    for (let y = top; y <= bottom; y++) {
-      for (let x = left; x <= right; x++) {
-        const amount = Math.min(1, half + 0.5 - distanceToSegment({ x: x + 0.5, y: y + 0.5 }, a, b));
-        if (amount <= 0 || !canPaint(cel, width, x, y, clip)) continue;
-        const index = y * width + x;
-        coverage.set(index, Math.max(coverage.get(index) ?? 0, amount));
+    const [dx, dy] = [b.x - a.x, b.y - a.y];
+    const [x0, x1] = range([a.x, b.x], width);
+    const [y0, y1] = range([a.y, b.y], height);
+    for (let y = y0; y <= y1; y++) {
+      // 이 행에서는 선분 중 세로로 reach 안에 드는 부분(t0~t1)의 좌우 reach 안만 본다 (긴 사선에서 빈 곳을 훑지 않음).
+      const [u, v] = dy === 0 ? [0, 1] : [(y + 0.5 - reach - a.y) / dy, (y + 0.5 + reach - a.y) / dy];
+      const [t0, t1] = [Math.max(0, Math.min(u, v)), Math.min(1, Math.max(u, v))];
+      if (t0 > t1) continue;
+      const from = Math.max(x0, Math.floor(a.x + Math.min(t0 * dx, t1 * dx) - reach));
+      const to = Math.min(x1, Math.ceil(a.x + Math.max(t0 * dx, t1 * dx) + reach));
+      for (let x = from; x <= to; x++) {
+        const local = (y - top) * span + x - left;
+        if (coverage[local] === 1) continue; // 이미 다 덮인 픽셀
+        const amount = Math.min(1, half + 0.5 - distanceToSegment(x + 0.5, y + 0.5, a, b));
+        if (amount > coverage[local] && canPaint(cel, width, x, y, clip)) coverage[local] = amount;
       }
     }
   }
-  const colors = sprite.palette.map(hexToRgb);
+  const colors = palette.map(hexToRgb);
   const stroke = colors[value - 1];
-  for (const [index, amount] of coverage) {
-    const below = visibleAt(sprite, frame, layer, index);
-    if (below === TRANSPARENT) {
+  for (let local = 0; local < coverage.length; local++) {
+    const amount = coverage[local];
+    if (amount <= 0) continue;
+    const index = (top + Math.floor(local / span)) * width + left + (local % span);
+    const base = below(index);
+    if (base === TRANSPARENT) {
       if (amount >= 0.5) cel[index] = value;
       continue;
     }
-    const blended = blendColor(colors, stroke, colors[below - 1], amount) + 1;
+    const blended = blendColor(colors, stroke, colors[base - 1], amount) + 1;
     // 보이는 색과 같으면 그대로 둔다 (아래 레이어 색을 현재 레이어에 덮어 그리지 않음).
-    if (blended !== below) cel[index] = blended;
+    if (blended !== base) cel[index] = blended;
   }
 }
 
@@ -102,21 +159,13 @@ function distance(a: Point, b: Point): number {
   return Math.hypot(b.x - a.x, b.y - a.y);
 }
 
-/** 점 p와 선분 ab 사이의 거리 */
-function distanceToSegment(p: Point, a: Point, b: Point): number {
-  const [dx, dy] = [b.x - a.x, b.y - a.y];
+/** 점 (x, y)와 선분 ab 사이의 거리 (픽셀마다 부르므로 객체를 만들지 않는다) */
+function distanceToSegment(x: number, y: number, a: Point, b: Point): number {
+  const dx = b.x - a.x;
+  const dy = b.y - a.y;
   const squaredLength = dx * dx + dy * dy;
-  const t = squaredLength === 0 ? 0 : Math.max(0, Math.min(1, ((p.x - a.x) * dx + (p.y - a.y) * dy) / squaredLength));
-  return distance(p, { x: a.x + t * dx, y: a.y + t * dy });
-}
-
-/** 현재 레이어부터 아래로 내려가며 index 위치에 보이는 픽셀 값 (현재 레이어는 숨겨져 있어도 포함) */
-function visibleAt(sprite: Sprite, frame: number, layer: number, index: number): number {
-  for (let l = layer; l >= 0; l--) {
-    const value = sprite.frames[frame].cels[l][index];
-    if (value !== TRANSPARENT && (l === layer || sprite.layers[l].visible)) return value;
-  }
-  return TRANSPARENT;
+  const t = squaredLength === 0 ? 0 : Math.max(0, Math.min(1, ((x - a.x) * dx + (y - a.y) * dy) / squaredLength));
+  return Math.hypot(a.x + t * dx - x, a.y + t * dy - y);
 }
 
 /**

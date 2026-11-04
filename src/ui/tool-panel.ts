@@ -1,5 +1,16 @@
 import { MAX_STROKE_WIDTH } from '../sprite';
-import { clearPath, copySelection, deselect, pasteClipboard, renderPath, selectAll } from './commands';
+import {
+  clearPath,
+  copySelection,
+  deleteShape,
+  deselect,
+  editingPath,
+  finishShape,
+  onVectorLayer,
+  pasteClipboard,
+  renderPath,
+  selectAll,
+} from './commands';
 import { h } from './dom';
 import type { Store, Tool } from './store';
 
@@ -11,7 +22,10 @@ const TOOLS: [Tool, string, string][] = [
   ['vector', '벡터', 'P'],
 ];
 
-/** 도구 선택과 도구별 옵션 (선택: 전체 선택·복사·붙여넣기, 벡터: 곡선·두께·안티에일리어싱·패스 그리기/지우기) */
+/**
+ * 도구 선택과 도구별 옵션 (선택: 전체 선택·복사·붙여넣기, 벡터: 곡선·두께·안티에일리어싱과
+ * 픽셀 레이어에서는 패스 그리기/지우기, 벡터 레이어에서는 도형 완료/삭제)
+ */
 export function createToolPanel(store: Store): HTMLElement {
   const command = (action: (store: Store) => void) => () => store.update(() => action(store));
   const buttons = TOOLS.map(([tool, label, key]) =>
@@ -40,7 +54,7 @@ export function createToolPanel(store: Store): HTMLElement {
   const checkbox = (option: 'curve' | 'antialias') => {
     const input = h('input', {
       type: 'checkbox',
-      onchange: () => store.update(() => (store.sprite.path[option] = input.checked)),
+      onchange: () => store.update(() => (editingPath(store)[option] = input.checked)),
     });
     return input;
   };
@@ -54,7 +68,7 @@ export function createToolPanel(store: Store): HTMLElement {
     onchange: () =>
       store.update(() => {
         const value = Number(width.value);
-        if (Number.isInteger(value) && value >= 1 && value <= MAX_STROKE_WIDTH) store.sprite.path.width = value;
+        if (Number.isInteger(value) && value >= 1 && value <= MAX_STROKE_WIDTH) editingPath(store).width = value;
       }),
   });
   const render = h('button', {
@@ -62,6 +76,13 @@ export function createToolPanel(store: Store): HTMLElement {
     title: '패스를 따라 현재 레이어에 현재 색으로 그리기. 패스는 남음 (Enter)',
     onclick: command(renderPath),
   });
+  const clear = h('button', { textContent: '패스 지우기', title: '패스 지우기 (Esc)', onclick: command(clearPath) });
+  const finish = h('button', {
+    textContent: '도형 완료',
+    title: '도형 편집 마치기. 다음에 빈 곳을 누르면 새 도형 시작 (Enter, Esc)',
+    onclick: command(finishShape),
+  });
+  const remove = h('button', { textContent: '도형 삭제', title: '편집 중인 도형 지우기 (Delete)', onclick: command(deleteShape) });
   const vectorOptions = h(
     'div',
     { className: 'tool-options' },
@@ -74,20 +95,29 @@ export function createToolPanel(store: Store): HTMLElement {
       '안티에일리어싱',
     ),
     render,
-    h('button', { textContent: '패스 지우기', title: '패스 지우기 (Esc)', onclick: command(clearPath) }),
+    clear,
+    finish,
+    remove,
   );
 
   store.subscribe(() => {
-    const { path } = store.sprite;
+    const path = editingPath(store);
+    const vectorLayer = onVectorLayer(store);
     buttons.forEach((button, i) => button.classList.toggle('active', TOOLS[i][0] === store.tool));
-    deselectButton.disabled = copy.disabled = !store.selection;
-    paste.disabled = !store.clipboard;
+    deselectButton.disabled = !store.selection;
+    // 벡터 레이어에는 픽셀이 없어 복사·붙여넣기를 쓸 수 없다.
+    copy.disabled = !store.selection || vectorLayer;
+    paste.disabled = !store.clipboard || vectorLayer;
     selectOptions.classList.toggle('inactive', store.tool !== 'select');
     vectorOptions.classList.toggle('inactive', store.tool !== 'vector');
     curve.checked = path.curve;
     antialias.checked = path.antialias;
     if (document.activeElement !== width) width.value = String(path.width);
-    render.disabled = path.points.length < 2;
+    render.disabled = store.sprite.path.points.length < 2;
+    // 버튼 수가 같아 바꿔 보여도 패널 크기는 그대로다.
+    render.hidden = clear.hidden = vectorLayer;
+    finish.hidden = remove.hidden = !vectorLayer;
+    finish.disabled = remove.disabled = !store.shape;
   });
   return h(
     'section',
