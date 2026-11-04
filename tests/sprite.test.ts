@@ -135,4 +135,22 @@ describe('draw', () => {
     floodFill(cel, 3, 0, 0, 2);
     expect([...cel]).toEqual([2, 1, 0, 2, 1, 0, 2, 1, 0]);
   });
+
+  it('선택 영역(clip)이 있으면 그 안의 픽셀만 바꾼다', () => {
+    const line = new Uint8Array(5);
+    drawLine(line, 5, 0, 0, 4, 0, 1, { x: 1, y: 0, width: 3, height: 1 });
+    expect([...line]).toEqual([0, 1, 1, 1, 0]);
+
+    // 아래 행으로 이어진 영역이지만, 선택 영역(위 두 행) 밖으로는 퍼지지 않는다.
+    // prettier-ignore
+    const cel = new Uint8Array([
+      0, 1, 0,
+      0, 1, 0,
+      0, 0, 0,
+    ]);
+    floodFill(cel, 3, 0, 0, 2, { x: 0, y: 0, width: 3, height: 2 });
+    expect([...cel]).toEqual([2, 1, 0, 2, 1, 0, 0, 0, 0]);
+    floodFill(cel, 3, 0, 2, 2, { x: 0, y: 0, width: 3, height: 2 });
+    expect(cel[6]).toBe(0);
+  });
 });

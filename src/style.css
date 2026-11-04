@@ -55,6 +55,11 @@ button:hover {
   background: #3d3e46;
 }
 
+button:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
 button.active,
 .list li.active {
   border-color: var(--accent);
@@ -161,14 +166,48 @@ input[type='color'] {
   cursor: grab;
 }
 
-.sprite-canvas {
+/* 캔버스와 그 위에 겹친 오버레이(선택 영역, 벡터 패스) */
+.stage {
+  position: relative;
   flex: none;
   margin: auto;
+}
+
+.sprite-canvas {
+  display: block;
   image-rendering: pixelated;
   cursor: crosshair;
   /* 투명(빈) 픽셀이 보이도록 체크무늬 배경을 깐다. 내보내는 이미지에는 포함되지 않는다. */
   background: repeating-conic-gradient(#bdbdbd 0 25%, #f2f2f2 0 50%) 0 0 / 16px 16px;
   box-shadow: 0 0 0 1px var(--border);
+}
+
+.overlay {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  overflow: visible;
+  pointer-events: none;
+}
+
+.tool-options {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding-top: 8px;
+  border-top: 1px solid var(--border);
+}
+
+.tool-options label {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+/* 다른 도구일 때도 자리를 차지하게 해, 도구를 바꿔도 캔버스 위치가 움직이지 않게 한다. */
+.tool-options.inactive {
+  visibility: hidden;
 }
 
 .swatches {
@@ -237,6 +276,18 @@ input[type='color'] {
     flex-wrap: wrap;
     align-items: center;
     border-right: none;
+  }
+
+  .tool-options {
+    flex-direction: row;
+    flex-wrap: wrap;
+    align-items: center;
+    padding-top: 0;
+    border-top: none;
+  }
+
+  .tool-options.inactive {
+    display: none;
   }
 
   .side {

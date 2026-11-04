@@ -1,15 +1,37 @@
-/** 한 셀(레이어의 픽셀 배열)에 그리는 알고리즘. 캔버스 밖 좌표는 무시한다. */
+/** 한 셀(레이어의 픽셀 배열)에 그리는 알고리즘. 캔버스와 clip(선택 영역) 밖의 픽셀은 바꾸지 않는다. */
+
+/** 픽셀 단위 직사각형 영역 */
+export interface Rect {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+}
+
+/** 픽셀 (x, y)가 캔버스 안이고, clip이 있으면 그 안에도 있는지 */
+export function canPaint(cel: Uint8Array, width: number, x: number, y: number, clip?: Rect): boolean {
+  const inCanvas = x >= 0 && x < width && y >= 0 && y < cel.length / width;
+  return inCanvas && (!clip || (x >= clip.x && x < clip.x + clip.width && y >= clip.y && y < clip.y + clip.height));
+}
 
 /** 브레젠험 직선: 포인터가 빠르게 움직여도 픽셀 사이가 끊기지 않게 잇는다. */
-export function drawLine(cel: Uint8Array, width: number, x0: number, y0: number, x1: number, y1: number, value: number): void {
-  const height = cel.length / width;
+export function drawLine(
+  cel: Uint8Array,
+  width: number,
+  x0: number,
+  y0: number,
+  x1: number,
+  y1: number,
+  value: number,
+  clip?: Rect,
+): void {
   const dx = Math.abs(x1 - x0);
   const dy = -Math.abs(y1 - y0);
   const sx = x0 < x1 ? 1 : -1;
   const sy = y0 < y1 ? 1 : -1;
   let error = dx + dy;
   for (;;) {
-    if (x0 >= 0 && x0 < width && y0 >= 0 && y0 < height) cel[y0 * width + x0] = value;
+    if (canPaint(cel, width, x0, y0, clip)) cel[y0 * width + x0] = value;
     if (x0 === x1 && y0 === y1) return;
     const e2 = 2 * error;
     if (e2 >= dy) {
@@ -23,9 +45,9 @@ export function drawLine(cel: Uint8Array, width: number, x0: number, y0: number,
   }
 }
 
-/** (x, y)와 같은 값으로 상하좌우 연결된 영역을 value로 채운다. */
-export function floodFill(cel: Uint8Array, width: number, x: number, y: number, value: number): void {
-  if (x < 0 || x >= width || y < 0 || y * width >= cel.length) return;
+/** (x, y)와 같은 값으로 상하좌우 연결된 영역을 value로 채운다. clip 경계를 넘어 퍼지지 않는다. */
+export function floodFill(cel: Uint8Array, width: number, x: number, y: number, value: number, clip?: Rect): void {
+  if (!canPaint(cel, width, x, y, clip)) return;
   const target = cel[y * width + x];
   if (target === value) return;
   const stack = [y * width + x];
@@ -34,9 +56,10 @@ export function floodFill(cel: Uint8Array, width: number, x: number, y: number, 
     if (cel[i] !== target) continue;
     cel[i] = value;
     const column = i % width;
-    if (column > 0) stack.push(i - 1);
-    if (column < width - 1) stack.push(i + 1);
-    if (i >= width) stack.push(i - width);
-    if (i + width < cel.length) stack.push(i + width);
+    const row = (i - column) / width;
+    if (canPaint(cel, width, column - 1, row, clip)) stack.push(i - 1);
+    if (canPaint(cel, width, column + 1, row, clip)) stack.push(i + 1);
+    if (canPaint(cel, width, column, row - 1, clip)) stack.push(i - width);
+    if (canPaint(cel, width, column, row + 1, clip)) stack.push(i + width);
   }
 }
