@@ -21,6 +21,8 @@ export interface Floating {
 export class Store {
   sprite: Sprite = createSprite();
   tool: Tool = 'pencil';
+  /** 마스크 편집에서는 연필=표시, 지우개=숨김, 채우기=표시 영역 채우기. */
+  editMask = false;
   /** 선택한 팔레트 인덱스. 칠하는 픽셀 값은 color + 1 */
   color = 0;
   layer = 0;
@@ -49,6 +51,8 @@ export class Store {
     this.color = clamp(this.color, this.sprite.palette.length);
     this.layer = clamp(this.layer, this.sprite.layers.length);
     this.frame = clamp(this.frame, this.sprite.frames.length);
+    if (!this.sprite.frames[this.frame].masks?.[this.layer]) this.editMask = false;
+    if (this.sprite.layers[this.layer].locked) this.shape = undefined;
     // 캔버스 크기가 줄어 선택 영역이 캔버스를 벗어나면 해제한다.
     const { selection, sprite } = this;
     if (selection && (selection.x + selection.width > sprite.width || selection.y + selection.height > sprite.height)) {
@@ -66,6 +70,7 @@ export class Store {
     this.sprite = sprite;
     this.color = this.layer = this.frame = 0;
     this.playing = false;
+    this.editMask = false;
     this.selection = this.floating = this.clipboard = this.shape = undefined;
   }
 }
