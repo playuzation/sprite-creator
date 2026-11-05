@@ -1,4 +1,4 @@
-import { addLayer, addLayerMask, moveLayer, removeLayer, removeLayerMask } from '../sprite';
+import { addLayer, addLayerMask, moveLayer, removeLayer, removeLayerMask, renderLayerRGBA } from '../sprite';
 import { h } from './dom';
 import type { Store } from './store';
 
@@ -46,6 +46,32 @@ export function createLayerPanel(store: Store): HTMLElement {
     },
   });
   const list = h('ul', { className: 'list' });
+  const source = h('canvas');
+  const sourceContext = source.getContext('2d')!;
+  let thumbnails: HTMLCanvasElement[] = [];
+  let renderQueued = false;
+  const queueThumbnails = () => {
+    if (renderQueued) return;
+    renderQueued = true;
+    requestAnimationFrame(() => {
+      renderQueued = false;
+      const { sprite, frame } = store;
+      source.width = sprite.width;
+      source.height = sprite.height;
+      const image = sourceContext.createImageData(sprite.width, sprite.height);
+      thumbnails.forEach((thumbnail, layer) => {
+        renderLayerRGBA(sprite, frame, layer, image.data);
+        sourceContext.putImageData(image, 0, 0);
+        const context = thumbnail.getContext('2d')!;
+        context.clearRect(0, 0, thumbnail.width, thumbnail.height);
+        context.imageSmoothingEnabled = false;
+        const scale = Math.min(thumbnail.width / sprite.width, thumbnail.height / sprite.height);
+        const width = Math.max(1, Math.round(sprite.width * scale));
+        const height = Math.max(1, Math.round(sprite.height * scale));
+        context.drawImage(source, Math.floor((thumbnail.width - width) / 2), Math.floor((thumbnail.height - height) / 2), width, height);
+      });
+    });
+  };
   const moveBy = (offset: number) =>
     store.update(() => {
       const to = store.layer + offset;
@@ -74,7 +100,15 @@ export function createLayerPanel(store: Store): HTMLElement {
       : store.editMask
         ? '마스크 편집: 흰색=표시, 검정=숨김. 연필·채우기=표시, 지우개=숨김'
         : '그림 편집';
+    thumbnails = [];
     const items = store.sprite.layers.map((layer, i) => {
+      const thumbnail = h('canvas', {
+        width: 40, height: 32, className: layer.visible ? 'layer-thumbnail' : 'layer-thumbnail layer-hidden',
+        title: `${layer.name} · 프레임 ${store.frame + 1}${layer.visible ? '' : ' (숨김)'}`,
+      });
+      thumbnail.setAttribute('role', 'img');
+      thumbnail.setAttribute('aria-label', thumbnail.title);
+      thumbnails.push(thumbnail);
       const visible = h('input', {
         type: 'checkbox',
         checked: layer.visible,
@@ -86,7 +120,8 @@ export function createLayerPanel(store: Store): HTMLElement {
         'li',
         { className: i === store.layer ? 'active' : '', onclick: () => store.update(() => { store.layer = i; setTarget(false); }) },
         visible,
-        layer.name,
+        thumbnail,
+        h('span', { className: 'layer-name', textContent: layer.name, title: layer.name }),
         h('label', { title: '그림·마스크 편집 및 레이어 삭제 방지', onclick: (event) => event.stopPropagation() },
           h('input', { type: 'checkbox', checked: !!layer.locked, onchange: (event) => store.update(() => {
             layer.locked = (event.target as HTMLInputElement).checked;
@@ -98,6 +133,7 @@ export function createLayerPanel(store: Store): HTMLElement {
       );
     });
     list.replaceChildren(...items.reverse());
+    queueThumbnails();
   });
 
   return h(
