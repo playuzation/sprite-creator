@@ -4,7 +4,7 @@ import { canUseTool, startGesture, type Gesture } from './canvas-tools';
 import { h, isFormKey } from './dom';
 import type { Store } from './store';
 
-const ZOOMS = [0.25, 0.5, 1, 2, 3, 4, 6, 8, 12, 16, 24, 32];
+const ZOOMS = [0.0625, 0.125, 0.25, 0.5, 1, 2, 3, 4, 6, 8, 12, 16, 24, 32];
 /** 확대한 캔버스 한 변의 최대 길이 (CSS 픽셀) */
 const MAX_DISPLAY = 8192;
 

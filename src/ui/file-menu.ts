@@ -1,4 +1,4 @@
-import { MAX_SIZE, createSprite, loadProject } from '../sprite';
+import { MIN_SIZE, MAX_SIZE, createSprite, loadProject } from '../sprite';
 import { saveFile } from './commands';
 import { h } from './dom';
 import { createExportMenu } from './export-menu';
@@ -8,7 +8,7 @@ import type { Store } from './store';
 
 /** 상단 메뉴: 새로 만들기, 해상도·캔버스 변경, 프로젝트 저장/불러오기(JSON), 이미지·애니메이션 내보내기 */
 export function createFileMenu(store: Store): HTMLElement {
-  const sizeInput = (title: string) => h('input', { type: 'number', min: '1', max: String(MAX_SIZE), title });
+  const sizeInput = (title: string) => h('input', { type: 'number', min: String(MIN_SIZE), max: String(MAX_SIZE), title });
   const width = sizeInput('너비');
   const height = sizeInput('높이');
   const fileInput = h('input', { type: 'file', accept: '.json,application/json', hidden: true });

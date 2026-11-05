@@ -39,15 +39,15 @@ describe('project file', () => {
     expect(sprite.frames.map((frame) => frame.shapes)).toEqual([[[], [], []], [[], [], []]]);
   });
 
-  it('1024x1024 빈 캔버스도 작게 저장된다', async () => {
-    const json = await saveProject(createSprite(1024, 1024));
-    expect(json.length).toBeLessThan(10_000);
-    expect((await loadProject(json)).frames[0].cels[0]).toHaveLength(1024 * 1024);
+  it('4096x4096 빈 캔버스도 작게 저장된다', async () => {
+    const json = await saveProject(createSprite(4096, 4096));
+    expect(json.length).toBeLessThan(30_000);
+    expect((await loadProject(json)).frames[0].cels[0]).toHaveLength(4096 * 4096);
   });
 
   it('잘못된 파일은 거부한다', async () => {
     const valid = JSON.parse(await saveProject(sampleSprite()));
-    const otherSize = JSON.parse(await saveProject(createSprite(8, 8)));
+    const otherSize = JSON.parse(await saveProject(createSprite(16, 16)));
     const cels = valid.frames[0].cels as string[];
     /** 벡터 레이어(2번)의 도형 값을 바꾼 파일 */
     const withShape = (changes: object) => ({
@@ -58,7 +58,7 @@ describe('project file', () => {
       'not json',
       '{}',
       { ...valid, format: 'other' },
-      { ...valid, width: 2048 },
+      { ...valid, width: 4097 },
       { ...valid, fps: 0 },
       { ...valid, palette: Array(33).fill('#000000') },
       { ...valid, palette: ['red'] },

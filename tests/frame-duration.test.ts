@@ -1,12 +1,13 @@
+import { createPixelFixture } from './fixtures';
 import { describe, expect, it } from 'vitest';
 import {
-  addLayer, addLayerMask, createSprite, duplicateFrame, exportGif, exportWebp, frameDuration, loadProject,
+  addLayer, addLayerMask, duplicateFrame, exportGif, exportWebp, frameDuration, loadProject,
   MAX_FRAME_DURATION, MIN_FRAME_DURATION, saveProject, setFrameDuration,
 } from '../src/sprite';
 
 describe('프레임별 표시 시간', () => {
   it('기존 프레임은 기본 FPS, 개별 시간은 FPS와 독립적으로 사용한다', () => {
-    const s = createSprite(2, 1);
+    const s = createPixelFixture(16, 16);
     duplicateFrame(s, 0);
     expect(frameDuration(s, 0)).toBe(100);
     setFrameDuration(s, 1, 350);
@@ -19,7 +20,7 @@ describe('프레임별 표시 시간', () => {
   });
 
   it('프레임 복제 시 시간도 복사하고 독립적으로 수정한다', () => {
-    const s = createSprite(2, 1);
+    const s = createPixelFixture(16, 16);
     setFrameDuration(s, 0, 250);
     duplicateFrame(s, 0);
     setFrameDuration(s, 1, 500);
@@ -27,7 +28,7 @@ describe('프레임별 표시 시간', () => {
   });
 
   it('시간이 없는 예전 JSON과 새 JSON 모두 저장·불러오기 된다', async () => {
-    const s = createSprite(2, 1);
+    const s = createPixelFixture(16, 16);
     s.fps = 8;
     const old = await loadProject(await saveProject(s));
     expect(old.frames[0].duration).toBeUndefined();
@@ -39,7 +40,7 @@ describe('프레임별 표시 시간', () => {
   });
 
   it('범위 밖·소수·잘못된 시간을 거부한다', async () => {
-    const s = createSprite(1, 1);
+    const s = createPixelFixture(16, 16);
     const file = JSON.parse(await saveProject(s));
     for (const value of [0, -1, MIN_FRAME_DURATION - 1, MAX_FRAME_DURATION + 1, 10.5, NaN, Infinity]) {
       expect(() => setFrameDuration(s, 0, value)).toThrow();
@@ -52,7 +53,7 @@ describe('프레임별 표시 시간', () => {
   });
 
   it('GIF는 프레임별 시간을 10ms 단위로 내보낸다', () => {
-    const s = createSprite(2, 1);
+    const s = createPixelFixture(16, 16);
     s.frames[0].cels[0].fill(1);
     setFrameDuration(s, 0, 123);
     duplicateFrame(s, 0);
@@ -66,7 +67,7 @@ describe('프레임별 표시 시간', () => {
   });
 
   it('WebP는 선택한 순서대로 각 프레임 시간을 내보낸다', () => {
-    const s = createSprite(2, 1);
+    const s = createPixelFixture(16, 16);
     setFrameDuration(s, 0, 123);
     duplicateFrame(s, 0);
     setFrameDuration(s, 1, 456);
@@ -85,7 +86,7 @@ describe('프레임별 표시 시간', () => {
 
 
 it('마스크·다중 레이어·표시 시간을 함께 복제하고 독립 편집·저장한다', async () => {
-  const s = createSprite(2, 1);
+  const s = createPixelFixture(16, 16);
   addLayer(s, 1, 'vector');
   s.frames[0].cels[0][0] = 1;
   s.frames[0].shapes[1].push({ points: [{ x: 0.5, y: 0.5 }], curve: false, width: 1, antialias: false, color: 2 });
@@ -101,8 +102,8 @@ it('마스크·다중 레이어·표시 시간을 함께 복제하고 독립 편
   setFrameDuration(s, 1, 750);
   expect(s.frames[0].cels[0][0]).toBe(1);
   expect(s.frames[0].shapes[1][0].points[0].x).toBe(0.5);
-  expect([...s.frames[0].masks![0]!]).toEqual([1, 1]);
-  expect([...s.frames[0].masks![1]!]).toEqual([1, 1]);
+  expect(s.frames[0].masks![0]!.every((v) => v === 1)).toBe(true);
+  expect(s.frames[0].masks![1]!.every((v) => v === 1)).toBe(true);
   expect(s.frames[0].duration).toBe(350);
   expect(await loadProject(await saveProject(s))).toEqual(s);
 });

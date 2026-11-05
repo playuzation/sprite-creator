@@ -1,9 +1,10 @@
+import { createPixelFixture } from './fixtures';
 import { describe, expect, it } from 'vitest';
-import { addLayer, createPath, createSprite, distanceToPath, drawLine, drawPath, pathPoints, type Point, type VectorPath } from '../src/sprite';
+import { addLayer, createPath, distanceToPath, drawLine, drawPath, pathPoints, type Point, type VectorPath } from '../src/sprite';
 
 /** 흰 배경 레이어 위에 빈 레이어가 있는 스프라이트 (팔레트: 1 검정, 2 흰색, 3 회색) */
 function spriteOnWhite(width: number, height: number) {
-  const sprite = createSprite(width, height);
+  const sprite = createPixelFixture(width, height);
   sprite.palette = ['#000000', '#ffffff', '#808080'];
   sprite.frames[0].cels[0].fill(2);
   addLayer(sprite, 1);
@@ -17,7 +18,7 @@ const rows = (cel: Uint8Array, width: number) => Array.from({ length: cel.length
 
 describe('drawPath', () => {
   it('안티에일리어싱을 끄면 각 점이 놓인 픽셀을 브레젠험 직선으로 잇는다', () => {
-    const sprite = createSprite(8, 8);
+    const sprite = createPixelFixture(8, 8);
     drawPath(sprite, 0, 0, path([{ x: 0.2, y: 0.7 }, { x: 5.9, y: 3.1 }, { x: 7.5, y: 7.5 }]), 3);
     const expected = new Uint8Array(64);
     drawLine(expected, 8, 0, 0, 5, 3, 3);
@@ -52,14 +53,14 @@ describe('drawPath', () => {
   });
 
   it('아래가 투명하면 섞을 색이 없으므로 절반 이상 걸친 픽셀만 선 색으로 칠한다', () => {
-    const sprite = createSprite(4, 4);
+    const sprite = createPixelFixture(4, 4);
     // y = 1.25: 행 0에 1/4, 행 1에 3/4 걸침
     drawPath(sprite, 0, 0, antialiased([{ x: 0.5, y: 1.25 }, { x: 3.5, y: 1.25 }]), 1);
     expect(rows(sprite.frames[0].cels[0], 4)).toEqual(['0000', '1111', '0000', '0000']);
   });
 
   it('아래 벡터 레이어의 도형도 섞을 색으로 쓴다', () => {
-    const sprite = createSprite(4, 4);
+    const sprite = createPixelFixture(4, 4);
     sprite.palette = ['#000000', '#ffffff', '#808080'];
     addLayer(sprite, 0, 'vector');
     // 아래 벡터 레이어: 행 1·2를 지나는 흰 선 두 개
@@ -69,7 +70,7 @@ describe('drawPath', () => {
   });
 
   it('점이 하나면 그 자리에 붓 모양의 점을 찍는다', () => {
-    const sprite = createSprite(5, 5);
+    const sprite = createPixelFixture(5, 5);
     drawPath(sprite, 0, 0, path([{ x: 2.5, y: 2.5 }], { width: 3 }), 1);
     expect(rows(sprite.frames[0].cels[0], 5)).toEqual(['00000', '00100', '01110', '00100', '00000']);
   });
@@ -86,14 +87,14 @@ describe('drawPath', () => {
   });
 
   it('두께만큼 둥근 붓으로 그린다 (안티에일리어싱 끔)', () => {
-    const sprite = createSprite(9, 5);
+    const sprite = createPixelFixture(9, 5);
     drawPath(sprite, 0, 0, path([{ x: 2.5, y: 2.5 }, { x: 6.5, y: 2.5 }], { width: 3 }), 1);
     // 두께 3 붓은 십자 모양: 가운데 행은 양 끝이 1픽셀씩 늘어난다.
     expect(rows(sprite.frames[0].cels[0], 9)).toEqual(['000000000', '001111100', '011111110', '001111100', '000000000']);
   });
 
   it('두께가 있으면 안티에일리어싱도 그 두께로 칠한다', () => {
-    const sprite = createSprite(9, 7);
+    const sprite = createPixelFixture(9, 7);
     drawPath(sprite, 0, 0, path([{ x: 1.5, y: 3.5 }, { x: 7.5, y: 3.5 }], { width: 3, antialias: true }), 1);
     const column = rows(sprite.frames[0].cels[0], 9).map((row) => row[4]).join('');
     expect(column).toBe('0011100');
@@ -118,8 +119,8 @@ describe('pathPoints', () => {
 
   it('곡선 패스는 직선 패스와 다르게, 찍은 점의 픽셀을 지나도록 그려진다', () => {
     const points = [{ x: 1.5, y: 12.5 }, { x: 8.5, y: 2.5 }, { x: 15.5, y: 12.5 }];
-    const straight = createSprite(17, 15);
-    const curved = createSprite(17, 15);
+    const straight = createPixelFixture(17, 15);
+    const curved = createPixelFixture(17, 15);
     drawPath(straight, 0, 0, path(points), 1);
     drawPath(curved, 0, 0, path(points, { curve: true }), 1);
     expect(curved.frames[0].cels[0]).not.toEqual(straight.frames[0].cels[0]);

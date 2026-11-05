@@ -1,6 +1,7 @@
+import { createPixelFixture } from './fixtures';
 import { describe, expect, it } from 'vitest';
 import { encodeGif } from '../src/codec';
-import { addColor, compositeFrame, createSprite, duplicateFrame, exportGif } from '../src/sprite';
+import { addColor, compositeFrame, duplicateFrame, exportGif } from '../src/sprite';
 
 /** 검증용 최소 GIF 디코더 (전역 색상표, 확장 블록, LZW) */
 function decodeGif(bytes: Uint8Array) {
@@ -89,7 +90,7 @@ describe('encodeGif', () => {
 
 describe('exportGif', () => {
   it('모든 프레임을 투명 배경 무한 반복 애니메이션으로 내보낸다', () => {
-    const sprite = createSprite(16, 8);
+    const sprite = createPixelFixture(16, 8);
     addColor(sprite, '#ff0000');
     sprite.frames[0].cels[0].fill(17, 0, 20);
     duplicateFrame(sprite, 0);

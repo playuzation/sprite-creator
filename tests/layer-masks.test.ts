@@ -1,6 +1,7 @@
+import { createPixelFixture } from './fixtures';
 import { describe, expect, it } from 'vitest';
 import {
-  addLayer, addLayerMask, compositeFrame, createPath, createSprite, drawPath, duplicateFrame,
+  addLayer, addLayerMask, compositeFrame, createPath, drawPath, duplicateFrame,
   exportGif, exportSvg, loadProject, moveLayer, removeLayer, removeLayerMask, resizeCanvas, saveProject, scaleSprite,
 } from '../src/sprite';
 import { canUseTool, startGesture } from '../src/ui/canvas-tools';
@@ -9,7 +10,7 @@ import { Store } from '../src/ui/store';
 
 describe('layer masks', () => {
   it('마스크는 원본을 보존하고 아래 레이어를 드러내며 끄기·삭제로 복원된다', () => {
-    const s = createSprite(2, 1);
+    const s = createPixelFixture(2, 1);
     s.frames[0].cels[0].fill(2);
     addLayer(s, 1);
     s.frames[0].cels[1].fill(3);
@@ -24,7 +25,7 @@ describe('layer masks', () => {
   });
 
   it('벡터 도형에도 적용하고 SVG와 GIF에 반영한다', () => {
-    const s = createSprite(2, 1);
+    const s = createPixelFixture(2, 1);
     s.layers[0].kind = 'vector';
     s.frames[0].shapes[0].push({ ...createPath(), points: [{ x: 0.5, y: 0.5 }, { x: 1.5, y: 0.5 }], color: 1 });
     addLayerMask(s, 0);
@@ -40,7 +41,7 @@ describe('layer masks', () => {
   });
 
   it('프레임 복제는 독립 마스크를 만들고 레이어 순서·추가·삭제와 함께 이동한다', () => {
-    const s = createSprite(2, 1);
+    const s = createPixelFixture(2, 1);
     duplicateFrame(s, 0);
     addLayerMask(s, 0);
     s.frames[0].masks![0]![0] = 0;
@@ -59,20 +60,20 @@ describe('layer masks', () => {
   });
 
   it('해상도 변경은 마스크도 확대하고 캔버스 확장 부분은 표시한다', () => {
-    const s = createSprite(2, 1);
+    const s = createPixelFixture(16, 16);
     addLayerMask(s, 0);
-    s.frames[0].masks![0]!.set([0, 1]);
-    scaleSprite(s, 4, 1);
-    expect([...s.frames[0].masks![0]!]).toEqual([0, 0, 1, 1]);
-    resizeCanvas(s, 6, 1, { x: 0.5, y: 0 });
-    expect([...s.frames[0].masks![0]!]).toEqual([1, 0, 0, 1, 1, 1]);
-    resizeCanvas(s, 2, 1, { x: 1, y: 0 });
-    expect([...s.frames[0].masks![0]!]).toEqual([1, 1]);
+    s.frames[0].masks![0]![0] = 0;
+    scaleSprite(s, 32, 16);
+    expect([...s.frames[0].masks![0]!.slice(0, 4)]).toEqual([0, 0, 1, 1]);
+    resizeCanvas(s, 34, 16, { x: 0.5, y: 0 });
+    expect([...s.frames[0].masks![0]!.slice(0, 5)]).toEqual([1, 0, 0, 1, 1]);
+    resizeCanvas(s, 16, 16, { x: 1, y: 0 });
+    expect(s.frames[0].masks![0]!.every((v) => v === 1)).toBe(true);
   });
 
   it('마스크 편집은 선택 영역 안에서만 동작하고 픽셀·도형을 바꾸지 않는다', () => {
     const store = new Store();
-    store.sprite = createSprite(3, 1);
+    store.sprite = createPixelFixture(3, 1);
     store.sprite.frames[0].cels[0].fill(2);
     addLayerMask(store.sprite, 0);
     store.editMask = true;
@@ -89,7 +90,7 @@ describe('layer masks', () => {
   });
 
   it('새 필드 없는 프로젝트를 읽고 마스크·보호 설정을 왕복 저장한다', async () => {
-    const s = createSprite(2, 1);
+    const s = createPixelFixture(16, 16);
     const legacy = await loadProject(await saveProject(s));
     expect(legacy.layers[0].locked).toBeUndefined();
     expect(legacy.frames[0].masks).toBeUndefined();
@@ -101,7 +102,7 @@ describe('layer masks', () => {
   });
 
   it('잘못된 마스크 길이·값·배열과 보호 플래그를 거부한다', async () => {
-    const s = createSprite(2, 1);
+    const s = createPixelFixture(16, 16);
     addLayerMask(s, 0);
     const file = JSON.parse(await saveProject(s));
     for (const change of [{ locked: 'yes' }, { maskEnabled: 1 }]) {
@@ -120,7 +121,7 @@ describe('layer masks', () => {
 describe('layer protection', () => {
   it('포인터·붙여넣기·이동·패스 그리기를 막되 복사와 합성은 허용한다', () => {
     const store = new Store();
-    store.sprite = createSprite(2, 1);
+    store.sprite = createPixelFixture(2, 1);
     store.sprite.frames[0].cels[0].set([1, 2]);
     store.selection = { x: 0, y: 0, width: 1, height: 1 };
     store.sprite.path.points = [{ x: 0.5, y: 0.5 }, { x: 1.5, y: 0.5 }];
@@ -145,7 +146,7 @@ describe('layer protection', () => {
 
   it('보호한 벡터 도형과 마스크 변경·삭제를 막는다', () => {
     const store = new Store();
-    const s = store.sprite = createSprite(2, 1);
+    const s = store.sprite = createPixelFixture(2, 1);
     s.layers[0].kind = 'vector';
     const shape = { ...createPath(), points: [{ x: 0.5, y: 0.5 }], color: 1 };
     s.frames[0].shapes[0].push(shape);
