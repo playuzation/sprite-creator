@@ -1,4 +1,4 @@
-import { MAX_SIZE, importImageFrames, type ImportedFrame, type ImageImportResult } from '../sprite';
+import { MIN_SIZE, MAX_SIZE, importImageFrames, type ImportedFrame, type ImageImportResult } from '../sprite';
 import { h } from './dom';
 
 const MAX_FRAMES = 256;
@@ -35,17 +35,20 @@ export async function readImageFile(file: File): Promise<ImportedImage> {
   const frames: ImportedFrame[] = [];
   const readPixels = (source: CanvasImageSource, w: number, hgt: number, duration?: number) => {
     const scale = Math.min(1, MAX_SIZE / w, MAX_SIZE / hgt);
-    const nextWidth = Math.max(1, Math.round(w * scale));
-    const nextHeight = Math.max(1, Math.round(hgt * scale));
+    const imageWidth = Math.max(1, Math.round(w * scale));
+    const imageHeight = Math.max(1, Math.round(hgt * scale));
+    const nextWidth = Math.max(MIN_SIZE, imageWidth);
+    const nextHeight = Math.max(MIN_SIZE, imageHeight);
     if (!Number.isFinite(w) || !Number.isFinite(hgt) || w <= 0 || hgt <= 0) throw new Error('이미지 크기를 읽지 못했습니다.');
     if (frames.length && (width !== nextWidth || height !== nextHeight)) throw new Error('프레임 크기가 서로 다릅니다.');
     width = nextWidth; height = nextHeight;
     if ((frames.length + 1) * width * height > MAX_PIXELS) throw new Error('이미지가 너무 큽니다. 전체 프레임은 합계 32메가픽셀 이하여야 합니다.');
     if (scale < 1 && !frames.length) notes.push(`원본 ${w}×${hgt}를 ${width}×${height}로 축소합니다(최대 ${MAX_SIZE}).`);
+    if (!frames.length && (imageWidth < MIN_SIZE || imageHeight < MIN_SIZE)) notes.push(`짧은 변은 투명 여백으로 채워 최소 ${MIN_SIZE}×${MIN_SIZE} 캔버스로 엽니다.`);
     const canvas = h('canvas', { width, height });
     const context = canvas.getContext('2d', { willReadFrequently: true })!;
     context.imageSmoothingEnabled = false;
-    context.drawImage(source, 0, 0, width, height);
+    context.drawImage(source, 0, 0, imageWidth, imageHeight);
     frames.push({ rgba: context.getImageData(0, 0, width, height).data, duration });
   };
   if (animatedType && Decoder && await Decoder.isTypeSupported(type)) {

@@ -1,13 +1,15 @@
+import { createPixelFixture } from './fixtures';
 import { describe, expect, it } from 'vitest';
 import {
   MAX_COLORS,
+  createSprite,
+  isValidSize,
   addColor,
   copyRegion,
   pasteRegion,
   addLayer,
   compositeFrame,
   createPath,
-  createSprite,
   drawLine,
   duplicateFrame,
   floodFill,
@@ -31,10 +33,11 @@ describe('createSprite', () => {
     expect(sprite.palette.length).toBeLessThanOrEqual(MAX_COLORS);
   });
 
-  it('1~1024 정수 크기만 허용한다', () => {
-    expect(createSprite(1024, 1024).frames[0].cels[0]).toHaveLength(1024 * 1024);
-    expect(createSprite(1, 3).frames[0].cels[0]).toHaveLength(3);
-    for (const [w, h] of [[0, 10], [1025, 10], [10, 1025], [10.5, 10]]) {
+  it('16~4096 사이의 모든 정수 크기를 허용한다', () => {
+    for (let n = 16; n <= 4096; n++) expect(isValidSize(n)).toBe(true);
+    expect(createSprite(4096, 4096).frames[0].cels[0]).toHaveLength(4096 * 4096);
+    expect(createSprite(17, 31).frames[0].cels[0]).toHaveLength(527);
+    for (const [w, h] of [[0, 16], [15, 16], [16, 15], [4097, 16], [16, 4097], [16.5, 16], [NaN, 16], [Infinity, 16]]) {
       expect(() => createSprite(w, h)).toThrow(RangeError);
     }
   });
@@ -42,15 +45,15 @@ describe('createSprite', () => {
 
 describe('palette', () => {
   it('최대 32색까지 추가할 수 있다', () => {
-    const sprite = createSprite(2, 2);
+    const sprite = createPixelFixture(2, 2);
     while (sprite.palette.length < MAX_COLORS) addColor(sprite, '#ABCDEF');
     expect(sprite.palette.at(-1)).toBe('#abcdef');
     expect(() => addColor(sprite, '#000000')).toThrow(RangeError);
-    expect(() => addColor(createSprite(), 'red')).toThrow(TypeError);
+    expect(() => addColor(createPixelFixture(), 'red')).toThrow(TypeError);
   });
 
   it('색을 지우면 그 색 픽셀은 투명해지고 뒤쪽 색 픽셀은 당겨진다', () => {
-    const sprite = createSprite(4, 1);
+    const sprite = createPixelFixture(4, 1);
     sprite.frames[0].cels[0].set([1, 2, 3, 0]);
     removeColor(sprite, 1);
     expect([...sprite.frames[0].cels[0]]).toEqual([1, 0, 2, 0]);
@@ -60,7 +63,7 @@ describe('palette', () => {
 
 describe('layers', () => {
   it('레이어 추가/삭제/이동이 모든 프레임에 적용된다', () => {
-    const sprite = createSprite(2, 1);
+    const sprite = createPixelFixture(2, 1);
     duplicateFrame(sprite, 0);
     addLayer(sprite, 1);
     expect(sprite.layers).toHaveLength(2);
@@ -78,7 +81,7 @@ describe('layers', () => {
 
 describe('frames', () => {
   it('프레임 추가는 현재 프레임의 모든 레이어를 독립적으로 복사한다', () => {
-    const sprite = createSprite(2, 2);
+    const sprite = createPixelFixture(2, 2);
     addLayer(sprite, 1);
     sprite.frames[0].cels[0][0] = 1;
     sprite.frames[0].cels[1][3] = 2;
@@ -98,93 +101,62 @@ describe('frames', () => {
 
 /** w x h 스프라이트에 픽셀 값을 채워 만든다. */
 function spriteOf(width: number, height: number, pixels: number[]) {
-  const sprite = createSprite(width, height);
+  const sprite = createPixelFixture(width, height);
   sprite.frames[0].cels[0].set(pixels);
   return sprite;
 }
 
 /** 셀을 행 단위 문자열로 (보기 쉬운 비교용) */
-function rows(sprite: ReturnType<typeof createSprite>, frame = 0, layer = 0) {
+function rows(sprite: ReturnType<typeof createPixelFixture>, frame = 0, layer = 0) {
   const cel = sprite.frames[frame].cels[layer];
   return Array.from({ length: sprite.height }, (_, y) => cel.slice(y * sprite.width, (y + 1) * sprite.width).join(''));
 }
 
 describe('resizeCanvas', () => {
-  it('늘리면 기준 위치에 그림을 붙이고 나머지는 투명하게 채운다', () => {
-    const grow = (x: number, y: number) => {
-      const sprite = spriteOf(2, 2, [1, 2, 3, 4]);
-      resizeCanvas(sprite, 4, 3, { x, y });
-      return rows(sprite);
-    };
-    expect(grow(0, 0)).toEqual(['1200', '3400', '0000']);
-    expect(grow(0.5, 0.5)).toEqual(['0120', '0340', '0000']); // 홀수 차이(세로 1)는 아래쪽에 붙임
-    expect(grow(1, 1)).toEqual(['0000', '0012', '0034']);
-    expect(grow(0.5, 0)).toEqual(['0120', '0340', '0000']);
-    expect(grow(1, 0.5)).toEqual(['0012', '0034', '0000']);
+  it('9개 기준 위치로 확장·잘라내며 픽셀과 패스를 옮긴다', () => {
+    for (const x of [0, 0.5, 1]) for (const y of [0, 0.5, 1]) {
+      const s = createSprite(16, 16);
+      s.frames[0].cels[0][0] = 1;
+      s.path.points = [{ x: 0.5, y: 0.5 }];
+      resizeCanvas(s, 20, 18, { x, y });
+      const dx = 4 * x, dy = 2 * y;
+      expect(s.frames[0].cels[0][dy * 20 + dx]).toBe(1);
+      expect(s.frames[0].cels[0].filter(Boolean)).toHaveLength(1);
+      expect(s.path.points).toEqual([{ x: dx + 0.5, y: dy + 0.5 }]);
+      resizeCanvas(s, 16, 16, { x, y });
+      expect(s.frames[0].cels[0][0]).toBe(1);
+      expect(s.path.points).toEqual([{ x: 0.5, y: 0.5 }]);
+    }
   });
-
-  it('줄이면 기준 위치 쪽을 남기고 잘라낸다', () => {
-    // prettier-ignore
-    const pixels = [
-      1, 2, 3, 4,
-      5, 6, 7, 8,
-      9, 1, 2, 3,
-      4, 5, 6, 7,
-    ];
-    const shrink = (x: number, y: number) => {
-      const sprite = spriteOf(4, 4, pixels);
-      resizeCanvas(sprite, 2, 2, { x, y });
-      return rows(sprite);
-    };
-    expect(shrink(0, 0)).toEqual(['12', '56']);
-    expect(shrink(0.5, 0.5)).toEqual(['67', '12']);
-    expect(shrink(1, 1)).toEqual(['23', '67']);
-    expect(shrink(0, 1)).toEqual(['91', '45']);
-  });
-
-  it('벡터 패스도 그림과 함께 옮기고, 크기는 1~1024만 허용한다', () => {
-    const sprite = createSprite(2, 2);
-    sprite.path.points = [{ x: 0.5, y: 1.5 }];
-    resizeCanvas(sprite, 6, 4, { x: 0.5, y: 1 });
-    expect(sprite.path.points).toEqual([{ x: 2.5, y: 3.5 }]);
-    expect(() => resizeCanvas(sprite, 2000, 1)).toThrow(RangeError);
+  it('범위를 벗어난 크기는 원본을 바꾸지 않고 거부한다', () => {
+    const s = createSprite(16, 16);
+    for (const n of [0, 15, 4097, 16.5]) expect(() => resizeCanvas(s, n, 16)).toThrow(RangeError);
+    expect(s.width).toBe(16);
   });
 });
 
 describe('scaleSprite', () => {
-  it('늘리면 각 픽셀이 커지고, 비율도 바꿀 수 있다', () => {
-    const double = spriteOf(2, 2, [1, 2, 3, 4]);
-    scaleSprite(double, 4, 4);
-    expect(rows(double)).toEqual(['1122', '1122', '3344', '3344']);
-
-    const tall = spriteOf(2, 1, [1, 2]);
-    scaleSprite(tall, 2, 3);
-    expect(rows(tall)).toEqual(['12', '12', '12']);
-  });
-
-  it('줄이면 새 픽셀 중심에 가장 가까운 원래 픽셀을 가져와 팔레트 색만 남는다', () => {
-    const sprite = spriteOf(4, 1, [1, 2, 3, 4]);
-    scaleSprite(sprite, 2, 1);
-    expect(rows(sprite)).toEqual(['24']);
-  });
-
-  it('모든 프레임·레이어와 벡터 패스를 함께 바꾸고, 크기는 1~1024만 허용한다', () => {
-    const sprite = spriteOf(2, 2, [1, 2, 3, 4]);
-    addLayer(sprite, 1);
-    sprite.frames[0].cels[1].set([0, 5, 0, 0]);
-    duplicateFrame(sprite, 0);
-    sprite.path.points = [{ x: 1, y: 0.5 }];
-    scaleSprite(sprite, 4, 2);
-    expect(rows(sprite, 1, 0)).toEqual(['1122', '3344']);
-    expect(rows(sprite, 1, 1)).toEqual(['0055', '0000']);
-    expect(sprite.path.points).toEqual([{ x: 2, y: 0.5 }]);
-    expect(() => scaleSprite(sprite, 0, 2)).toThrow(RangeError);
+  it('최근접 이웃으로 늘리거나 줄이고 모든 프레임·레이어·패스도 변환한다', () => {
+    const s = createSprite(16, 16);
+    s.frames[0].cels[0][0] = 1;
+    addLayer(s, 1);
+    s.frames[0].cels[1][0] = 2;
+    duplicateFrame(s, 0);
+    s.path.points = [{ x: 1, y: 0.5 }];
+    scaleSprite(s, 32, 16);
+    expect([...s.frames[1].cels[0].slice(0, 4)]).toEqual([1, 1, 0, 0]);
+    expect([...s.frames[1].cels[1].slice(0, 4)]).toEqual([2, 2, 0, 0]);
+    expect(s.path.points).toEqual([{ x: 2, y: 0.5 }]);
+    scaleSprite(s, 16, 16);
+    expect(s.frames[0].cels[0][0]).toBe(1);
+    expect(s.path.points).toEqual([{ x: 1, y: 0.5 }]);
+    for (const n of [15, 4097]) expect(() => scaleSprite(s, n, 16)).toThrow(RangeError);
   });
 });
 
 describe('render', () => {
   it('보이는 레이어 중 위쪽 픽셀이 보이고, 빈 곳은 투명하다', () => {
-    const sprite = createSprite(3, 1);
+    const sprite = createPixelFixture(3, 1);
     addLayer(sprite, 1);
     sprite.frames[0].cels[0].set([1, 1, 0]);
     sprite.frames[0].cels[1].set([2, 0, 0]);
@@ -254,14 +226,14 @@ describe('draw', () => {
 const shape = (options: Partial<VectorShape>): VectorShape => ({ ...createPath(), color: 1, ...options });
 
 /** 합성한 프레임을 행 단위 문자열로 */
-function compositeRows(sprite: ReturnType<typeof createSprite>, frame = 0) {
+function compositeRows(sprite: ReturnType<typeof createPixelFixture>, frame = 0) {
   const pixels = compositeFrame(sprite, frame);
   return Array.from({ length: sprite.height }, (_, y) => pixels.slice(y * sprite.width, (y + 1) * sprite.width).join(''));
 }
 
 describe('vector layers', () => {
   it('도형 목록은 레이어 추가·삭제·이동을 따라가고, 프레임을 추가하면 독립적으로 복사된다', () => {
-    const sprite = createSprite(4, 4);
+    const sprite = createPixelFixture(4, 4);
     addLayer(sprite, 1, 'vector');
     expect(sprite.layers.map((layer) => layer.kind)).toEqual(['pixel', 'vector']);
     const line = shape({ points: [{ x: 0.5, y: 0.5 }, { x: 3.5, y: 0.5 }] });
@@ -279,7 +251,7 @@ describe('vector layers', () => {
   });
 
   it('합성할 때 도형을 앞쪽부터 픽셀로 그리고(셀에는 굽지 않음), 숨긴 벡터 레이어는 빠진다', () => {
-    const sprite = createSprite(4, 4);
+    const sprite = createPixelFixture(4, 4);
     addLayer(sprite, 1, 'vector');
     sprite.frames[0].shapes[1].push(
       shape({ points: [{ x: 0.5, y: 1.5 }, { x: 3.5, y: 1.5 }], color: 1 }),
@@ -292,7 +264,7 @@ describe('vector layers', () => {
   });
 
   it('안티에일리어싱은 그 아래에 보이는 그림과 섞는다', () => {
-    const sprite = createSprite(4, 4);
+    const sprite = createPixelFixture(4, 4);
     sprite.palette = ['#000000', '#ffffff', '#808080'];
     sprite.frames[0].cels[0].fill(2);
     addLayer(sprite, 1, 'vector');
@@ -304,26 +276,53 @@ describe('vector layers', () => {
   });
 
   it('캔버스 변경은 도형을 옮기고, 해상도 변경은 도형을 늘리며 선 두께도 바꾼다 (1~32)', () => {
-    const sprite = createSprite(2, 2);
+    const sprite = createSprite(16, 16);
     addLayer(sprite, 1, 'vector');
     const [thin, thick] = [shape({ points: [{ x: 0.5, y: 1.5 }], width: 3 }), shape({ points: [{ x: 1, y: 1 }], width: 20 })];
     sprite.frames[0].shapes[1].push(thin, thick);
-    resizeCanvas(sprite, 6, 4, { x: 0.5, y: 1 });
+    resizeCanvas(sprite, 20, 18, { x: 0.5, y: 1 });
     expect(thin.points).toEqual([{ x: 2.5, y: 3.5 }]);
-    scaleSprite(sprite, 12, 8);
+    scaleSprite(sprite, 40, 36);
     expect(thin.points).toEqual([{ x: 5, y: 7 }]);
     expect([thin.width, thick.width]).toEqual([6, 32]);
     // 가로만 절반: 두께는 두 비율의 기하 평균(√0.5)만큼
-    scaleSprite(sprite, 6, 8);
+    scaleSprite(sprite, 20, 36);
     expect(thin.points).toEqual([{ x: 2.5, y: 7 }]);
     expect(thin.width).toBe(4);
   });
 
   it('색을 지우면 그 색의 도형은 지워지고 뒤쪽 색의 도형은 당겨진다', () => {
-    const sprite = createSprite(2, 2);
+    const sprite = createPixelFixture(2, 2);
     addLayer(sprite, 1, 'vector');
     sprite.frames[0].shapes[1].push(...[1, 2, 3].map((color) => shape({ points: [{ x: 0, y: 0 }], color })));
     removeColor(sprite, 1);
     expect(sprite.frames[0].shapes[1].map((s) => s.color)).toEqual([1, 2]);
   });
+});
+
+
+it('캔버스 확장 시 홀수 여백의 남는 픽셀은 오른쪽·아래에 붙는다', () => {
+  const s = createSprite(16, 16);
+  s.frames[0].cels[0].fill(1);
+  resizeCanvas(s, 19, 19, { x: 0.5, y: 0.5 });
+  expect(s.frames[0].cels[0][0]).toBe(0);
+  expect(s.frames[0].cels[0][20]).toBe(1);
+  expect(s.frames[0].cels[0][17 * 19 + 17]).toBe(0);
+});
+
+it('축소는 픽셀 중심의 최근접 이웃을 고르고 비표준 정수 크기로도 확대한다', () => {
+  const s = createSprite(32, 16);
+  for (let i = 0; i < s.frames[0].cels[0].length; i++) s.frames[0].cels[0][i] = i % 2 + 1;
+  scaleSprite(s, 16, 16);
+  expect(s.frames[0].cels[0].every((v) => v === 2)).toBe(true);
+  scaleSprite(s, 17, 31);
+  expect(s.frames[0].cels[0]).toHaveLength(17 * 31);
+  expect(s.frames[0].cels[0].every((v) => v === 2)).toBe(true);
+});
+
+it('1024를 넘는 좌표에서도 4096번째 픽셀까지 편집한다', () => {
+  const s = createSprite(4096, 16);
+  drawLine(s.frames[0].cels[0], s.width, 1023, 0, 4095, 0, 1);
+  for (const x of [1023, 1024, 2048, 4095]) expect(s.frames[0].cels[0][x]).toBe(1);
+  expect(s.frames[0].cels[0][1022]).toBe(0);
 });

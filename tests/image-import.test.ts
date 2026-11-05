@@ -4,49 +4,60 @@ import { readImageFile } from '../src/ui/image-import';
 
 const rgba = (...pixels: number[][]) => new Uint8ClampedArray(pixels.flat());
 
+
+/** 색상 변환 테스트는 작은 픽셀 표본을 유효한 최소 캔버스에 배치한다. */
+function importSamples(width: number, height: number, frames: Parameters<typeof importImageFrames>[2]) {
+  const w = Math.max(16, width), h = Math.max(16, height);
+  return importImageFrames(w, h, frames.map((frame) => {
+    const padded = new Uint8ClampedArray(w * h * 4);
+    for (let y = 0; y < height; y++) padded.set(frame.rgba.subarray(y * width * 4, (y + 1) * width * 4), y * w * 4);
+    return { ...frame, rgba: padded };
+  }));
+}
+
 describe('이미지 → 편집 가능한 스프라이트', () => {
   it('32색 이하의 픽셀과 투명을 손실 없이 유지한다', () => {
     const pixels = rgba([255, 0, 0, 255], [0, 255, 0, 255], [90, 80, 70, 0], [255, 0, 0, 255]);
-    const result = importImageFrames(4, 1, [{ rgba: pixels }]);
+    const result = importSamples(4, 1, [{ rgba: pixels }]);
     expect(result.sprite.palette).toEqual(['#ff0000', '#00ff00']);
-    expect([...result.sprite.frames[0].cels[0]]).toEqual([1, 2, 0, 1]);
+    expect([...result.sprite.frames[0].cels[0].slice(0, 4)]).toEqual([1, 2, 0, 1]);
     expect(result.quantized).toBe(false);
     expect(result.alphaFlattened).toBe(false);
   });
 
   it('같은 5비트 색상 구간의 색도 32색 이하면 구분한다', () => {
     const pixels = rgba([1, 2, 3, 255], [2, 3, 4, 255]);
-    expect(renderFrameRGBA(importImageFrames(2, 1, [{ rgba: pixels }]).sprite, 0)).toEqual(pixels);
+    expect(renderFrameRGBA(importSamples(2, 1, [{ rgba: pixels }]).sprite, 0).slice(0, 8)).toEqual(pixels);
   });
 
   it('사진은 최대 32색으로 줄이고 모든 프레임이 같은 팔레트를 쓴다', () => {
     const pixels = new Uint8ClampedArray(256 * 4);
     for (let i = 0; i < 256; i++) pixels.set([i, 255 - i, (i * 17) % 256, 255], i * 4);
-    const result = importImageFrames(256, 1, [{ rgba: pixels }, { rgba: pixels.slice().reverse() }]);
+    const result = importSamples(256, 1, [{ rgba: pixels }, { rgba: pixels.slice().reverse() }]);
     expect(result.quantized).toBe(true);
     expect(result.sprite.palette.length).toBeLessThanOrEqual(32);
     expect(result.sprite.palette.every((c) => /^#[0-9a-f]{6}$/.test(c))).toBe(true);
     expect(result.sprite.frames.every((f) => f.cels[0].every((v) => v <= result.sprite.palette.length))).toBe(true);
-    expect(importImageFrames(256, 1, [{ rgba: pixels }, { rgba: pixels.slice().reverse() }]).sprite).toEqual(result.sprite);
+    expect(importSamples(256, 1, [{ rgba: pixels }, { rgba: pixels.slice().reverse() }]).sprite).toEqual(result.sprite);
   });
 
   it('부분 투명도는 128을 기준으로 변환하고 완전히 투명해도 유효하다', () => {
-    const result = importImageFrames(3, 1, [{ rgba: rgba([255, 0, 0, 127], [0, 255, 0, 128], [0, 0, 255, 255]) }]);
+    const result = importSamples(3, 1, [{ rgba: rgba([255, 0, 0, 127], [0, 255, 0, 128], [0, 0, 255, 255]) }]);
     expect(result.alphaFlattened).toBe(true);
-    expect([...result.sprite.frames[0].cels[0]]).toEqual([0, 1, 2]);
-    const empty = importImageFrames(1, 1, [{ rgba: rgba([100, 0, 0, 0]) }]);
+    expect([...result.sprite.frames[0].cels[0].slice(0, 3)]).toEqual([0, 1, 2]);
+    const empty = importSamples(1, 1, [{ rgba: rgba([100, 0, 0, 0]) }]);
     expect(empty.sprite.palette).toEqual(['#000000']);
     expect(empty.sprite.frames[0].cels[0][0]).toBe(0);
   });
 
   it('애니메이션의 색상을 공유하고 프레임 내용·FPS·저장 왕복을 유지한다', async () => {
-    const result = importImageFrames(1, 1, [
+    const result = importSamples(1, 1, [
       { rgba: rgba([255, 0, 0, 255]), duration: 200 },
       { rgba: rgba([0, 0, 255, 255]), duration: 200 },
     ]);
     expect(result.sprite.fps).toBe(5);
     expect(result.timingAdjusted).toBe(false);
-    expect([...renderFrameRGBA(result.sprite, 1)]).toEqual([0, 0, 255, 255]);
+    expect([...renderFrameRGBA(result.sprite, 1).slice(0, 4)]).toEqual([0, 0, 255, 255]);
     result.sprite.frames[0].cels[0][0] = 0;
     expect(result.sprite.frames[1].cels[0][0]).toBe(2);
     expect(await loadProject(await saveProject(result.sprite))).toEqual(result.sprite);
@@ -54,7 +65,7 @@ describe('이미지 → 편집 가능한 스프라이트', () => {
 
   it('가변 지연·FPS 범위 초과를 알린다', () => {
     for (const durations of [[100, 200], [1, 1], [2000, 2000]]) {
-      const result = importImageFrames(1, 1, durations.map((duration) => ({ rgba: rgba([0, 0, 0, 255]), duration })));
+      const result = importSamples(1, 1, durations.map((duration) => ({ rgba: rgba([0, 0, 0, 255]), duration })));
       expect(result.timingAdjusted).toBe(true);
       expect(result.sprite.fps).toBeGreaterThanOrEqual(1);
       expect(result.sprite.fps).toBeLessThanOrEqual(30);
@@ -81,7 +92,7 @@ describe('브라우저 이미지 디코딩', () => {
     const drawImage = vi.fn();
     vi.stubGlobal('document', { createElement: () => ({
       append() {},
-      getContext: () => ({ drawImage, getImageData: () => ({ data: rgba([255, 0, 0, 255]) }) }),
+      getContext: () => ({ drawImage, getImageData: () => ({ data: new Uint8ClampedArray(16 * 16 * 4).fill(255) }) }),
     }) });
     class MockDecoder {
       static isTypeSupported = async () => true;

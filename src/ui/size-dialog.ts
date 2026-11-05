@@ -1,4 +1,4 @@
-import { MAX_SIZE, isValidSize, resizeCanvas, scaleSprite, type Anchor } from '../sprite';
+import { MIN_SIZE, MAX_SIZE, isValidSize, resizeCanvas, scaleSprite, type Anchor } from '../sprite';
 import { h } from './dom';
 import type { Store } from './store';
 
@@ -31,7 +31,7 @@ export function createSizeDialog(store: Store): { element: HTMLDialogElement; op
   let anchor: Anchor = { x: 0.5, y: 0.5 };
   const title = h('h2');
   const hint = h('p', { className: 'hint' });
-  const sizeInput = (name: string) => h('input', { type: 'number', min: '1', max: String(MAX_SIZE), title: name });
+  const sizeInput = (name: string) => h('input', { type: 'number', min: String(MIN_SIZE), max: String(MAX_SIZE), title: name });
   const width = sizeInput('너비');
   const height = sizeInput('높이');
   const keepRatio = h('input', { type: 'checkbox', checked: true });
@@ -40,7 +40,7 @@ export function createSizeDialog(store: Store): { element: HTMLDialogElement; op
   const follow = (changed: HTMLInputElement, other: HTMLInputElement, ratio: () => number) => {
     changed.oninput = () => {
       if (mode !== 'scale' || !keepRatio.checked) return;
-      other.value = String(Math.min(MAX_SIZE, Math.max(1, Math.round(Number(changed.value) * ratio()))));
+      other.value = String(Math.min(MAX_SIZE, Math.max(MIN_SIZE, Math.round(Number(changed.value) * ratio()))));
     };
   };
   follow(width, height, () => store.sprite.height / store.sprite.width);
@@ -63,7 +63,7 @@ export function createSizeDialog(store: Store): { element: HTMLDialogElement; op
 
   const apply = () => {
     const [w, hgt] = [Number(width.value), Number(height.value)];
-    if (!isValidSize(w) || !isValidSize(hgt)) return alert(`크기는 1~${MAX_SIZE} 사이의 정수여야 합니다.`);
+    if (!isValidSize(w) || !isValidSize(hgt)) return alert(`크기는 ${MIN_SIZE}~${MAX_SIZE} 사이의 정수여야 합니다.`);
     store.update(() => {
       if (mode === 'scale') scaleSprite(store.sprite, w, hgt);
       else resizeCanvas(store.sprite, w, hgt, anchor);

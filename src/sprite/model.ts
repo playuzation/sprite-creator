@@ -7,7 +7,8 @@
  */
 
 export const DEFAULT_SIZE = 128;
-export const MAX_SIZE = 1024;
+export const MIN_SIZE = 16;
+export const MAX_SIZE = 4096;
 export const MAX_COLORS = 32;
 export const MIN_FPS = 1;
 export const MAX_FPS = 30;
@@ -81,7 +82,7 @@ const DEFAULT_PALETTE = [
 ];
 
 export function isValidSize(value: unknown): value is number {
-  return Number.isInteger(value) && (value as number) >= 1 && (value as number) <= MAX_SIZE;
+  return Number.isInteger(value) && (value as number) >= MIN_SIZE && (value as number) <= MAX_SIZE;
 }
 
 export function isHexColor(value: unknown): value is string {
@@ -95,7 +96,7 @@ export function hexToRgb(hex: string): [number, number, number] {
 
 function assertSize(width: number, height: number): void {
   if (!isValidSize(width) || !isValidSize(height)) {
-    throw new RangeError(`캔버스 크기는 1~${MAX_SIZE} 사이의 정수여야 합니다.`);
+    throw new RangeError(`캔버스 크기는 ${MIN_SIZE}~${MAX_SIZE} 사이의 정수여야 합니다.`);
   }
 }
 

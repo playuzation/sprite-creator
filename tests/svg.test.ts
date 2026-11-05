@@ -1,11 +1,12 @@
+import { createPixelFixture } from './fixtures';
 import { describe, expect, it } from 'vitest';
-import { addLayer, canExportSvg, createPath, createSprite, exportSvg, type VectorShape } from '../src/sprite';
+import { addLayer, canExportSvg, createPath, exportSvg, type VectorShape } from '../src/sprite';
 
 const shape = (options: Partial<VectorShape>): VectorShape => ({ ...createPath(), color: 1, ...options });
 
 /** 맨 아래 픽셀 레이어 위에 벡터 레이어 두 개 */
 function vectorSprite() {
-  const sprite = createSprite(16, 8);
+  const sprite = createPixelFixture(16, 8);
   sprite.palette = ['#112233', '#abcdef'];
   addLayer(sprite, 1, 'vector');
   addLayer(sprite, 2, 'vector');
@@ -40,7 +41,7 @@ describe('exportSvg', () => {
   });
 
   it('곡선은 찍은 점을 모두 지나는 3차 베지어로 담는다 (화면에 그리는 곡선과 같은 조절점)', () => {
-    const sprite = createSprite(20, 20);
+    const sprite = createPixelFixture(20, 20);
     addLayer(sprite, 1, 'vector');
     sprite.layers[0].visible = false;
     sprite.frames[0].shapes[1].push(shape({ points: [{ x: 1, y: 8 }, { x: 8, y: 1 }, { x: 15, y: 8 }], curve: true }));
