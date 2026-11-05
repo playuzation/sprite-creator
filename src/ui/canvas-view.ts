@@ -60,6 +60,11 @@ export function createCanvasView(store: Store): HTMLElement {
       image = context.createImageData(sprite.width, sprite.height);
     }
     renderFrameRGBA(sprite, store.frame, image.data);
+    const mask = store.editMask ? sprite.frames[store.frame].masks?.[store.layer] : undefined;
+    if (mask) for (let i = 0; i < mask.length; i++) {
+      image.data.fill(mask[i] ? 255 : 0, i * 4, i * 4 + 3);
+      image.data[i * 4 + 3] = 255;
+    }
     context.putImageData(image, 0, 0);
   };
   const queueRender = () => {

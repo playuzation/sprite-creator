@@ -1,5 +1,5 @@
 import { TRANSPARENT, distanceToPath, drawLine, floodFill, type Point, type VectorShape } from '../sprite';
-import { moveSelectionTo, onVectorLayer } from './commands';
+import { isLocked, moveSelectionTo, onVectorLayer } from './commands';
 import type { Store, Tool } from './store';
 
 /** 포인터를 누른 채 이어지는 도구 작업. 화면 이동으로 바뀌면(두 번째 손가락) cancel로 되돌린다. */
@@ -15,6 +15,8 @@ const PAINT_TOOLS: Tool[] = ['pencil', 'eraser', 'fill'];
 
 /** 현재 레이어에서 현재 도구를 쓸 수 있는지 */
 export function canUseTool(store: Store): boolean {
+  if (isLocked(store)) return store.tool === 'select';
+  if (store.editMask) return store.tool !== 'vector';
   return !onVectorLayer(store) || !PAINT_TOOLS.includes(store.tool);
 }
 
@@ -29,7 +31,7 @@ export function startGesture(store: Store, point: Point, zoom: number, redraw: (
   const pixel = (p: Point): [number, number] => [Math.floor(p.x), Math.floor(p.y)];
   // 셀을 바꾸는 도구는 시작 전 셀을 복사해 두었다가, 취소하면 되돌린다.
   const editCel = () => {
-    const cel = sprite.frames[store.frame].cels[store.layer];
+    const cel = store.editMask ? sprite.frames[store.frame].masks![store.layer]! : sprite.frames[store.frame].cels[store.layer];
     const backup = cel.slice();
     const restore = () => {
       cel.set(backup);
@@ -42,7 +44,7 @@ export function startGesture(store: Store, point: Point, zoom: number, redraw: (
     case 'pencil':
     case 'eraser': {
       const { cel, restore } = editCel();
-      const value = store.tool === 'eraser' ? TRANSPARENT : store.color + 1;
+      const value = store.tool === 'eraser' ? TRANSPARENT : store.editMask ? 1 : store.color + 1;
       let last = pixel(point);
       const lineTo = (next: [number, number]) => {
         drawLine(cel, sprite.width, ...last, ...next, value, selection);
@@ -54,7 +56,7 @@ export function startGesture(store: Store, point: Point, zoom: number, redraw: (
     }
     case 'fill': {
       const { cel, restore } = editCel();
-      floodFill(cel, sprite.width, ...pixel(point), store.color + 1, selection);
+      floodFill(cel, sprite.width, ...pixel(point), store.editMask ? 1 : store.color + 1, selection);
       redraw();
       return { move: () => {}, cancel: restore };
     }
@@ -62,7 +64,7 @@ export function startGesture(store: Store, point: Point, zoom: number, redraw: (
       const [x0, y0] = pixel(point);
       // 선택 영역 안을 끌면 현재 레이어의 그 픽셀을 옮긴다 (픽셀 레이어만).
       const inside =
-        !onVectorLayer(store) &&
+        !isLocked(store) && !store.editMask && !onVectorLayer(store) &&
         selection &&
         x0 >= selection.x &&
         x0 < selection.x + selection.width &&

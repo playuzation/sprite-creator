@@ -32,7 +32,7 @@ export function createOverlay(): { element: SVGSVGElement; render(store: Store, 
       const box = { ...line, x: selection.x, y: selection.y, width: selection.width, height: selection.height };
       shapes.push(svg('rect', { ...box, stroke: '#000' }), svg('rect', { ...box, stroke: '#fff', 'stroke-dasharray': '4 4' }));
     }
-    if (store.tool === 'vector' && path && path.points.length > 0) {
+    if (!store.editMask && store.tool === 'vector' && path && path.points.length > 0) {
       const points = pathPoints(path)
         .map((p) => `${p.x},${p.y}`)
         .join(' ');

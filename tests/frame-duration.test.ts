@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
-  createSprite, duplicateFrame, exportGif, exportWebp, frameDuration, loadProject,
+  addLayer, addLayerMask, createSprite, duplicateFrame, exportGif, exportWebp, frameDuration, loadProject,
   MAX_FRAME_DURATION, MIN_FRAME_DURATION, saveProject, setFrameDuration,
 } from '../src/sprite';
 
@@ -81,4 +81,28 @@ describe('프레임별 표시 시간', () => {
     }
     expect(durations).toEqual([456, 123]);
   });
+});
+
+
+it('마스크·다중 레이어·표시 시간을 함께 복제하고 독립 편집·저장한다', async () => {
+  const s = createSprite(2, 1);
+  addLayer(s, 1, 'vector');
+  s.frames[0].cels[0][0] = 1;
+  s.frames[0].shapes[1].push({ points: [{ x: 0.5, y: 0.5 }], curve: false, width: 1, antialias: false, color: 2 });
+  addLayerMask(s, 0);
+  addLayerMask(s, 1);
+  setFrameDuration(s, 0, 350);
+  duplicateFrame(s, 0);
+  expect(s.frames[1]).toEqual(s.frames[0]);
+  s.frames[1].cels[0][0] = 3;
+  s.frames[1].shapes[1][0].points[0].x = 1.5;
+  s.frames[1].masks![0]![0] = 0;
+  s.frames[1].masks![1]![1] = 0;
+  setFrameDuration(s, 1, 750);
+  expect(s.frames[0].cels[0][0]).toBe(1);
+  expect(s.frames[0].shapes[1][0].points[0].x).toBe(0.5);
+  expect([...s.frames[0].masks![0]!]).toEqual([1, 1]);
+  expect([...s.frames[0].masks![1]!]).toEqual([1, 1]);
+  expect(s.frames[0].duration).toBe(350);
+  expect(await loadProject(await saveProject(s))).toEqual(s);
 });

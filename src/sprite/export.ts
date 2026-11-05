@@ -44,13 +44,33 @@ export function canExportSvg(sprite: Sprite): boolean {
 export function exportSvg(sprite: Sprite, frame: number): string {
   if (!canExportSvg(sprite)) throw new Error('보이는 레이어가 모두 벡터 레이어일 때만 SVG로 내보낼 수 있습니다.');
   const { width, height } = sprite;
-  const shapes = sprite.layers.flatMap((layer, i) => (layer.visible ? sprite.frames[frame].shapes[i] : []));
-  return [
-    `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}" viewBox="0 0 ${width} ${height}" fill="none" stroke-linecap="round" stroke-linejoin="round">`,
-    ...shapes.map((shape) => {
+  const layers = sprite.layers.flatMap((layer, i) => {
+    if (!layer.visible) return [];
+    const paths = sprite.frames[frame].shapes[i].map((shape) => {
       const crisp = shape.antialias ? '' : ' shape-rendering="crispEdges"';
       return `<path d="${pathData(shape)}" stroke="${sprite.palette[shape.color - 1]}" stroke-width="${shape.width}"${crisp}/>`;
-    }),
+    });
+    const mask = layer.maskEnabled === false ? undefined : sprite.frames[frame].masks?.[i];
+    if (!mask) return paths;
+    // 행마다 표시 구간을 묶어 SVG에서도 픽셀 마스크 경계를 그대로 유지한다.
+    const rectangles: string[] = [];
+    for (let y = 0; y < height; y++) {
+      for (let x = 0; x < width;) {
+        if (!mask[y * width + x]) { x++; continue; }
+        const start = x++;
+        while (x < width && mask[y * width + x]) x++;
+        rectangles.push(`<rect x="${start}" y="${y}" width="${x - start}" height="1"/>`);
+      }
+    }
+    const id = `layer-mask-${i}`;
+    return [
+      `<defs><clipPath id="${id}" clipPathUnits="userSpaceOnUse">${rectangles.join('')}</clipPath></defs>`,
+      `<g clip-path="url(#${id})">`, ...paths, '</g>',
+    ];
+  });
+  return [
+    `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}" viewBox="0 0 ${width} ${height}" fill="none" stroke-linecap="round" stroke-linejoin="round">`,
+    ...layers,
     '</svg>',
     '',
   ].join('\n');
