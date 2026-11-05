@@ -117,6 +117,7 @@ export function createCanvasView(store: Store): HTMLElement {
   };
   viewport.onpointerup = viewport.onpointercancel = (event) => {
     touches.delete(event.pointerId);
+    if (gesture) store.update(); // 완성한 획을 타임라인 썸네일에도 반영한다.
     gesture = undefined;
     // 손가락이 남아 있으면 남은 손가락을 기준으로 이동을 이어간다.
     panFrom = panFrom && touches.size > 0 ? panPoint(event) : undefined;

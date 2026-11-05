@@ -72,3 +72,18 @@ describe('muxAvif', () => {
     expect(find(file, ['moov', 'trak', 'tref', 'auxl'])).toHaveLength(1);
   });
 });
+
+it('가변 프레임 시간은 색·알파 트랙의 stts와 전체 길이에 반영된다', () => {
+  const samples = [first(1), frame(2), frame(3)];
+  const file = muxAvif({ width: 2, height: 2, color: samples, alpha: samples, frameMs: 100, frameDurations: [120, 450, 450] });
+  for (const stts of find(file, ['moov', 'trak', 'mdia', 'minf', 'stbl', 'stts'])) {
+    expect(u32At(file, stts.start + 4)).toBe(2);
+    expect([8, 12, 16, 20].map((offset) => u32At(file, stts.start + offset))).toEqual([1, 120, 2, 450]);
+  }
+  for (const mdhd of find(file, ['moov', 'trak', 'mdia', 'mdhd'])) {
+    expect(u32At(file, mdhd.start + 16)).toBe(1020);
+  }
+  for (const elst of find(file, ['moov', 'trak', 'edts', 'elst'])) {
+    expect(u32At(file, elst.start + 12)).toBe(1020);
+  }
+});

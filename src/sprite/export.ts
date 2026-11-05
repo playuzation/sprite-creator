@@ -1,5 +1,5 @@
 import { encodeAvif, encodeGif, encodeWebp } from '../codec';
-import { hexToRgb, type Sprite } from './model';
+import { frameDuration, hexToRgb, type Sprite } from './model';
 import { compositeFrame, renderFrameRGBA } from './render';
 import { pathData } from './vector';
 
@@ -16,18 +16,19 @@ export function exportGif(sprite: Sprite): Uint8Array<ArrayBuffer> {
     palette: [[0, 0, 0], ...sprite.palette.map(hexToRgb)],
     frames: sprite.frames.map((_, i) => compositeFrame(sprite, i)),
     delayCs: Math.round(100 / sprite.fps),
+    delaysCs: sprite.frames.map((_, i) => Math.max(1, Math.round(frameDuration(sprite, i) / 10))),
     transparentIndex: 0,
   });
 }
 
 /** 고른 프레임들을 무손실 WebP로 만든다. 하나면 정지 이미지, 여럿이면 애니메이션이다. */
 export function exportWebp(sprite: Sprite, frames: number[]): Uint8Array<ArrayBuffer> {
-  return encodeWebp({ width: sprite.width, height: sprite.height, frames: rgbaFrames(sprite, frames), frameMs: frameMs(sprite) });
+  return encodeWebp({ width: sprite.width, height: sprite.height, frames: rgbaFrames(sprite, frames), frameMs: frameMs(sprite), frameDurations: frames.map((i) => frameDuration(sprite, i)) });
 }
 
 /** 고른 프레임들을 AVIF로 만든다 (브라우저의 AV1 인코딩 필요). 하나면 정지 이미지, 여럿이면 애니메이션이다. */
 export function exportAvif(sprite: Sprite, frames: number[]): Promise<Uint8Array<ArrayBuffer>> {
-  return encodeAvif({ width: sprite.width, height: sprite.height, frames: rgbaFrames(sprite, frames), frameMs: frameMs(sprite) });
+  return encodeAvif({ width: sprite.width, height: sprite.height, frames: rgbaFrames(sprite, frames), frameMs: frameMs(sprite), frameDurations: frames.map((i) => frameDuration(sprite, i)) });
 }
 
 /** 보이는 레이어가 모두 벡터 레이어인지. 이때만 SVG로 내보낼 수 있다. */

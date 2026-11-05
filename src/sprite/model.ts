@@ -11,6 +11,8 @@ export const MAX_SIZE = 1024;
 export const MAX_COLORS = 32;
 export const MIN_FPS = 1;
 export const MAX_FPS = 30;
+export const MIN_FRAME_DURATION = 10;
+export const MAX_FRAME_DURATION = 600000;
 export const TRANSPARENT = 0;
 export const MAX_STROKE_WIDTH = 32;
 
@@ -31,6 +33,8 @@ export interface Layer {
  * shapes[i]는 layers[i]가 벡터 레이어일 때의 도형들이다 (앞쪽부터 그림. 픽셀 레이어는 빈 목록).
  */
 export interface Frame {
+  /** 표시 시간(ms). 없으면 문서의 기본 FPS를 따른다. */
+  duration?: number;
   cels: Uint8Array<ArrayBuffer>[];
   shapes: VectorShape[][];
   /** 프레임별 이진 마스크: 0은 숨김, 1은 표시. null은 마스크 없음. */
@@ -251,8 +255,9 @@ export function moveLayer(sprite: Sprite, from: number, to: number): void {
 
 /** index 프레임의 모든 레이어(픽셀과 도형)를 복사해 바로 뒤에 새 프레임으로 넣는다. */
 export function duplicateFrame(sprite: Sprite, index: number): void {
-  const { cels, shapes, masks } = sprite.frames[index];
+  const { cels, shapes, masks, duration } = sprite.frames[index];
   sprite.frames.splice(index + 1, 0, {
+    ...(duration === undefined ? {} : { duration }),
     cels: cels.map((cel) => cel.slice()),
     shapes: shapes.map((list) => list.map(copyShape)),
     ...(masks ? { masks: masks.map((mask) => mask?.slice() ?? null) } : {}),
@@ -271,6 +276,23 @@ function toColor(hex: string): string {
 
 function move<T>(list: T[], from: number, to: number): void {
   list.splice(to, 0, ...list.splice(from, 1));
+}
+
+/** 개별 시간이 없는 기존 프레임은 기본 FPS로 재생한다. */
+export function frameDuration(sprite: Sprite, index: number): number {
+  return sprite.frames[index].duration ?? Math.round(1000 / sprite.fps);
+}
+
+export function isFrameDuration(value: unknown): value is number {
+  return Number.isInteger(value) && (value as number) >= MIN_FRAME_DURATION && (value as number) <= MAX_FRAME_DURATION;
+}
+
+export function setFrameDuration(sprite: Sprite, index: number, duration?: number): void {
+  if (duration !== undefined && !isFrameDuration(duration)) {
+    throw new Error(`표시 시간은 ${MIN_FRAME_DURATION}~${MAX_FRAME_DURATION}ms 사이의 정수여야 합니다.`);
+  }
+  if (duration === undefined) delete sprite.frames[index].duration;
+  else sprite.frames[index].duration = duration;
 }
 
 /** 보호된 레이어의 직접 편집을 거부한다. 문서 전체 변환은 허용한다. */
