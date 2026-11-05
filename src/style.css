@@ -24,10 +24,20 @@ body {
 }
 
 #app {
+  -webkit-user-select: none;
+  user-select: none;
   display: grid;
   grid-template-rows: auto minmax(0, 1fr) auto;
   height: 100vh;
   height: 100dvh;
+}
+
+/* UI 라벨은 드래그로 선택하지 않지만 입력값은 계속 선택·편집할 수 있다. */
+#app input,
+#app textarea,
+#app [contenteditable='true'] {
+  -webkit-user-select: text;
+  user-select: text;
 }
 
 h1 {

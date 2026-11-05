@@ -13,6 +13,9 @@ import { createToolPanel } from './tool-panel';
  * 패키지 안에서는 index(조립) → 각 패널·단축키 → commands(편집 명령) → store, dom 방향으로만 의존한다.
  */
 export function mountApp(root: HTMLElement): void {
+  // 편집기의 포인터 조작이 브라우저 기본 메뉴나 기본 드래그로 이어지지 않게 한다.
+  root.addEventListener('contextmenu', (event) => event.preventDefault());
+  root.addEventListener('dragstart', (event) => event.preventDefault());
   const store = new Store();
   root.append(
     createFileMenu(store),
