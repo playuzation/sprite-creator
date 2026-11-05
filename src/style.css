@@ -416,3 +416,25 @@ input[type='color'] {
   font-size: 11px;
   white-space: nowrap;
 }
+
+/* 레이어 썸네일은 숨김 여부와 관계없이 현재 프레임의 해당 레이어만 보여준다. */
+.layer-thumbnail {
+  flex: none;
+  width: 40px;
+  height: 32px;
+  image-rendering: pixelated;
+  background: repeating-conic-gradient(#bdbdbd 0 25%, #f2f2f2 0 50%) 0 0 / 8px 8px;
+  box-shadow: 0 0 0 1px var(--border);
+}
+
+.layer-thumbnail.layer-hidden {
+  opacity: 0.5;
+}
+
+.layer-name {
+  flex: 1;
+  min-width: 48px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}

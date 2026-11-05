@@ -61,11 +61,31 @@ export function renderFrameRGBA(
   frameIndex: number,
   out = new Uint8ClampedArray(sprite.width * sprite.height * 4),
 ): Uint8ClampedArray<ArrayBuffer> {
-  // 픽셀 값별 RGBA 4바이트를 미리 만들어 두고 4바이트 단위로 복사한다 (바이트 순서가 그대로 유지됨).
+  return pixelsToRGBA(sprite, compositeFrame(sprite, frameIndex), out);
+}
+
+/** 현재 프레임의 한 레이어만 그린다. 숨김 레이어도 내용을 보여주며 적용 중인 마스크는 반영한다. */
+export function renderLayerRGBA(
+  sprite: Sprite,
+  frameIndex: number,
+  layer: number,
+  out = new Uint8ClampedArray(sprite.width * sprite.height * 4),
+): Uint8ClampedArray<ArrayBuffer> {
+  const frame = sprite.frames[frameIndex];
+  // 벡터 안티에일리어싱의 색은 실제 합성과 같은 아래 그림을 기준으로 한다.
+  const pixels = sprite.layers[layer].kind === 'vector'
+    ? drawShapes(sprite, frame.shapes[layer], compositeFrame(sprite, frameIndex, layer))
+    : frame.cels[layer];
+  const mask = sprite.layers[layer].maskEnabled === false ? undefined : frame.masks?.[layer];
+  return pixelsToRGBA(sprite, pixels, out, mask);
+}
+
+function pixelsToRGBA(
+  sprite: Sprite, pixels: Uint8Array, out: Uint8ClampedArray<ArrayBuffer>, mask?: Uint8Array | null,
+): Uint8ClampedArray<ArrayBuffer> {
   const colors = new Uint32Array(sprite.palette.length + 1);
   sprite.palette.forEach((hex, i) => new Uint8Array(colors.buffer).set([...hexToRgb(hex), 255], (i + 1) * 4));
   const target = new Uint32Array(out.buffer, out.byteOffset, out.length / 4);
-  const pixels = compositeFrame(sprite, frameIndex);
-  for (let i = 0; i < pixels.length; i++) target[i] = colors[pixels[i]];
+  for (let i = 0; i < pixels.length; i++) target[i] = mask && !mask[i] ? 0 : colors[pixels[i]];
   return out;
 }
