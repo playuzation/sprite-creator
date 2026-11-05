@@ -9,11 +9,13 @@ export interface GifOptions {
   frames: ReadonlyArray<Uint8Array>;
   /** 프레임 간 지연 (1/100초) */
   delayCs: number;
+  /** 프레임별 지연. 생략하면 delayCs 사용. */
+  delaysCs?: readonly number[];
   /** 투명으로 처리할 색상 인덱스 */
   transparentIndex: number;
 }
 
-export function encodeGif({ width, height, palette, frames, delayCs, transparentIndex }: GifOptions): Uint8Array<ArrayBuffer> {
+export function encodeGif({ width, height, palette, frames, delayCs, delaysCs, transparentIndex }: GifOptions): Uint8Array<ArrayBuffer> {
   // 전역 색상표 크기는 2^tableBits 여야 한다.
   let tableBits = 1;
   while (1 << tableBits < palette.length) tableBits++;
@@ -29,10 +31,10 @@ export function encodeGif({ width, height, palette, frames, delayCs, transparent
   out.bytes([0x03, 0x01, 0x00, 0x00, 0x00]);
 
   const minCodeSize = Math.max(2, tableBits);
-  for (const frame of frames) {
+  for (const [index, frame] of frames.entries()) {
     // 그래픽 제어 확장: 처리 방식 2(배경으로 복원)로 이전 프레임이 투명 영역에 남지 않게 한다.
     out.bytes([0x21, 0xf9, 0x04, (2 << 2) | 1]);
-    out.u16(delayCs);
+    out.u16(delaysCs?.[index] ?? delayCs);
     out.bytes([transparentIndex, 0]);
     // 이미지 설명자: 캔버스 전체, 지역 색상표 없음
     out.bytes([0x2c]);

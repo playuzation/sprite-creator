@@ -1,9 +1,50 @@
-import { addLayer, moveLayer, removeLayer } from '../sprite';
+import { addLayer, addLayerMask, moveLayer, removeLayer, removeLayerMask } from '../sprite';
 import { h } from './dom';
 import type { Store } from './store';
 
 /** 레이어 목록(위쪽 레이어가 위에 표시): 선택, 보이기, 추가(픽셀·벡터), 삭제, 이름 변경, 순서 변경 */
 export function createLayerPanel(store: Store): HTMLElement {
+  const setTarget = (mask: boolean) => {
+    store.editMask = mask;
+    store.selection = undefined;
+    store.floating = undefined;
+    store.shape = undefined;
+    if (mask && store.tool === 'vector') store.tool = 'pencil';
+  };
+  const maskStatus = h('p', { className: 'hint' });
+  const maskEdit = h('button', { textContent: '마스크 편집', onclick: () => store.update(() => setTarget(true)) });
+  const imageEdit = h('button', { textContent: '그림 편집', onclick: () => store.update(() => setTarget(false)) });
+  const maskAdd = h('button', {
+    textContent: '마스크 추가',
+    onclick: () => store.update(() => {
+      addLayerMask(store.sprite, store.layer);
+      setTarget(true);
+    }),
+  });
+  const maskRemove = h('button', {
+    textContent: '마스크 삭제',
+    onclick: () => {
+      if (!confirm('이 레이어의 모든 프레임에서 마스크를 삭제할까요?')) return;
+      store.update(() => {
+        removeLayerMask(store.sprite, store.layer);
+        setTarget(false);
+      });
+    },
+  });
+  const maskToggle = h('button', { onclick: () => store.update(() => {
+    const layer = store.sprite.layers[store.layer];
+    if (!layer.locked) layer.maskEnabled = layer.maskEnabled === false;
+  }) });
+  const remove = h('button', {
+    textContent: '삭제',
+    onclick: () => {
+      if (!confirm('현재 레이어를 모든 프레임에서 삭제할까요?')) return;
+      store.update(() => {
+        removeLayer(store.sprite, store.layer);
+        setTarget(false);
+      });
+    },
+  });
   const list = h('ul', { className: 'list' });
   const moveBy = (offset: number) =>
     store.update(() => {
@@ -19,6 +60,20 @@ export function createLayerPanel(store: Store): HTMLElement {
   };
 
   store.subscribe(() => {
+    const current = store.sprite.layers[store.layer];
+    const hasMask = !!store.sprite.frames[store.frame].masks?.[store.layer];
+    remove.disabled = !!current.locked || store.sprite.layers.length <= 1;
+    maskAdd.disabled = !!current.locked || hasMask;
+    maskEdit.disabled = !hasMask || !!current.locked;
+    maskRemove.disabled = maskToggle.disabled = !hasMask || !!current.locked;
+    imageEdit.classList.toggle('active', !store.editMask);
+    maskEdit.classList.toggle('active', store.editMask);
+    maskToggle.textContent = current.maskEnabled === false ? '마스크 켜기' : '마스크 끄기';
+    maskStatus.textContent = current.locked
+      ? '보호됨: 그림·마스크 편집 및 레이어 삭제 불가'
+      : store.editMask
+        ? '마스크 편집: 흰색=표시, 검정=숨김. 연필·채우기=표시, 지우개=숨김'
+        : '그림 편집';
     const items = store.sprite.layers.map((layer, i) => {
       const visible = h('input', {
         type: 'checkbox',
@@ -29,9 +84,16 @@ export function createLayerPanel(store: Store): HTMLElement {
       });
       return h(
         'li',
-        { className: i === store.layer ? 'active' : '', onclick: () => store.update(() => (store.layer = i)) },
+        { className: i === store.layer ? 'active' : '', onclick: () => store.update(() => { store.layer = i; setTarget(false); }) },
         visible,
         layer.name,
+        h('label', { title: '그림·마스크 편집 및 레이어 삭제 방지', onclick: (event) => event.stopPropagation() },
+          h('input', { type: 'checkbox', checked: !!layer.locked, onchange: (event) => store.update(() => {
+            layer.locked = (event.target as HTMLInputElement).checked;
+            store.floating = undefined;
+            store.shape = undefined;
+          }) }), '보호'),
+        ...(store.sprite.frames[store.frame].masks?.[i] ? [h('span', { className: 'layer-kind', textContent: layer.maskEnabled === false ? '마스크 꺼짐' : '마스크' })] : []),
         ...(layer.kind === 'vector' ? [h('span', { className: 'layer-kind', textContent: '벡터' })] : []),
       );
     });
@@ -42,6 +104,8 @@ export function createLayerPanel(store: Store): HTMLElement {
     'section',
     { className: 'panel' },
     h('h2', { textContent: '레이어' }),
+    maskStatus,
+    h('div', { className: 'row' }, imageEdit, maskEdit, maskAdd, maskToggle, maskRemove),
     list,
     h(
       'div',
@@ -49,7 +113,10 @@ export function createLayerPanel(store: Store): HTMLElement {
       h('button', {
         textContent: '추가',
         title: '픽셀 레이어 추가',
-        onclick: () => store.update(() => addLayer(store.sprite, ++store.layer)),
+        onclick: () => store.update(() => {
+          addLayer(store.sprite, ++store.layer);
+          setTarget(false);
+        }),
       }),
       h('button', {
         textContent: '벡터 추가',
@@ -57,15 +124,11 @@ export function createLayerPanel(store: Store): HTMLElement {
         onclick: () =>
           store.update(() => {
             addLayer(store.sprite, ++store.layer, 'vector');
+            setTarget(false);
             store.tool = 'vector';
           }),
       }),
-      h('button', {
-        textContent: '삭제',
-        onclick: () =>
-          confirm('현재 레이어를 모든 프레임에서 삭제할까요?') &&
-          store.update(() => removeLayer(store.sprite, store.layer)),
-      }),
+      remove,
       h('button', { textContent: '이름', title: '이름 변경', onclick: rename }),
       h('button', { textContent: '▲', title: '위로', onclick: () => moveBy(1) }),
       h('button', { textContent: '▼', title: '아래로', onclick: () => moveBy(-1) }),

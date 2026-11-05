@@ -15,6 +15,7 @@ export interface AvifOptions {
   frames: ReadonlyArray<ArrayLike<number>>;
   /** 프레임 하나의 길이 (밀리초) */
   frameMs: number;
+  frameDurations?: readonly number[];
 }
 
 /** High 프로필(4:4:4), 레벨 4.0, 8비트 */
@@ -25,7 +26,7 @@ const COLOR_SPACE: VideoColorSpaceInit = { matrix: 'rgb', primaries: 'bt709', tr
 const OBU_SEQUENCE_HEADER = 1;
 const OBU_TEMPORAL_DELIMITER = 2;
 
-export async function encodeAvif({ width, height, frames, frameMs }: AvifOptions): Promise<Uint8Array<ArrayBuffer>> {
+export async function encodeAvif({ width, height, frames, frameMs, frameDurations }: AvifOptions): Promise<Uint8Array<ArrayBuffer>> {
   const supported =
     typeof VideoEncoder !== 'undefined' &&
     (await VideoEncoder.isConfigSupported({ codec: CODEC, width, height, bitrateMode: 'quantizer' })).supported;
@@ -33,7 +34,7 @@ export async function encodeAvif({ width, height, frames, frameMs }: AvifOptions
   const plane = (rgba: ArrayLike<number>, channel: number) => Uint8Array.from({ length: width * height }, (_, i) => rgba[i * 4 + channel]);
   const color = await encodeAv1(width, height, frames.map((rgba) => [plane(rgba, 1), plane(rgba, 2), plane(rgba, 0)]));
   const alpha = await encodeAv1(width, height, frames.map((rgba) => Array(3).fill(plane(rgba, 3))));
-  return muxAvif({ width, height, color, alpha, frameMs });
+  return muxAvif({ width, height, color, alpha, frameMs, frameDurations });
 }
 
 export interface AvifStreams {
@@ -44,10 +45,11 @@ export interface AvifStreams {
   /** 프레임별 알파 AV1 데이터 */
   alpha: Uint8Array[];
   frameMs: number;
+  frameDurations?: readonly number[];
 }
 
 /** AV1 데이터로 AVIF 파일을 짠다. 첫 프레임은 언제나 대표 정지 이미지(primary item)로도 넣는다. */
-export function muxAvif({ width, height, color, alpha, frameMs }: AvifStreams): Uint8Array<ArrayBuffer> {
+export function muxAvif({ width, height, color, alpha, frameMs, frameDurations }: AvifStreams): Uint8Array<ArrayBuffer> {
   const colorStream = { samples: color, config: av1Config(color[0]) };
   const alphaStream = { samples: alpha, config: av1Config(alpha[0]) };
   const animated = color.length > 1;
@@ -56,7 +58,7 @@ export function muxAvif({ width, height, color, alpha, frameMs }: AvifStreams): 
     const alphaStart = dataStart + sum(color);
     const brands = animated ? ['avis', '\0\0\0\0', 'avif', 'avis', 'msf1', 'iso8', 'mif1', 'miaf'] : ['avif', '\0\0\0\0', 'avif', 'mif1', 'miaf'];
     const head = [box('ftyp', ...brands.map(ascii)), imageItems(width, height, colorStream, alphaStream, dataStart, alphaStart)];
-    if (animated) head.push(movie(width, height, colorStream, alphaStream, dataStart, alphaStart, frameMs));
+    if (animated) head.push(movie(width, height, colorStream, alphaStream, dataStart, alphaStart, frameMs, frameDurations));
     return head;
   };
   return concat(...layout(sum(layout(0)) + 8), box('mdat', ...color, ...alpha));
@@ -195,9 +197,16 @@ function imageItems(width: number, height: number, color: Av1Stream, alpha: Av1S
 }
 
 /** 애니메이션: 색 트랙(1번)과 알파 트랙(2번). 모든 프레임은 키프레임이고 무한 반복한다. */
-function movie(width: number, height: number, color: Av1Stream, alpha: Av1Stream, colorAt: number, alphaAt: number, frameMs: number) {
+function movie(width: number, height: number, color: Av1Stream, alpha: Av1Stream, colorAt: number, alphaAt: number, frameMs: number, frameDurations?: readonly number[]) {
   const count = color.samples.length;
-  const duration = count * frameMs;
+  const durations = color.samples.map((_, i) => frameDurations?.[i] ?? frameMs);
+  const duration = durations.reduce((sum, ms) => sum + ms, 0);
+  const runs: { count: number; ms: number }[] = [];
+  for (const ms of durations) {
+    const last = runs[runs.length - 1];
+    if (last?.ms === ms) last.count++;
+    else runs.push({ count: 1, ms });
+  }
   const track = (id: number, stream: Av1Stream, at: number) => {
     const isAlpha = stream === alpha;
     const sampleEntry = box(
@@ -235,7 +244,7 @@ function movie(width: number, height: number, color: Av1Stream, alpha: Av1Stream
           box(
             'stbl',
             fullBox('stsd', 0, 0, u32(1), sampleEntry),
-            fullBox('stts', 0, 0, u32(1), u32(count), u32(frameMs)),
+            fullBox('stts', 0, 0, u32(runs.length), ...runs.flatMap((run) => [u32(run.count), u32(run.ms)])),
             fullBox('stsc', 0, 0, u32(1), u32(1), u32(count), u32(1)),
             fullBox('stsz', 0, 0, u32(0), u32(count), ...stream.samples.map((sample) => u32(sample.length))),
             fullBox('stco', 0, 0, u32(1), u32(at)),

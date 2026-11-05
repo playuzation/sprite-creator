@@ -8,6 +8,7 @@ import {
   copyShape,
   isHexColor,
   isValidSize,
+  isFrameDuration,
   type Layer,
   type LayerKind,
   type Sprite,
@@ -34,7 +35,7 @@ interface ProjectFile {
   fps: number;
   palette: string[];
   layers: (Omit<Layer, 'kind'> & { kind?: LayerKind })[];
-  frames: { cels: string[]; shapes?: VectorShape[][] }[];
+  frames: { cels: string[]; shapes?: VectorShape[][]; masks?: (string | null)[]; duration?: number }[];
   path?: VectorPath;
 }
 
@@ -46,11 +47,15 @@ export async function saveProject(sprite: Sprite): Promise<string> {
     height: sprite.height,
     fps: sprite.fps,
     palette: sprite.palette,
-    layers: sprite.layers.map(({ name, visible, kind }) => ({ name, visible, kind })),
+    layers: sprite.layers.map((layer) => ({ ...layer })),
     frames: await Promise.all(
       sprite.frames.map(async (frame) => ({
+        ...(frame.duration === undefined ? {} : { duration: frame.duration }),
         cels: await Promise.all(frame.cels.map(async (cel) => bytesToBase64(await deflate(cel)))),
         shapes: frame.shapes.map((shapes) => shapes.map(copyShape)),
+        ...(frame.masks ? {
+          masks: await Promise.all(frame.masks.map(async (mask) => mask ? bytesToBase64(await deflate(mask)) : null)),
+        } : {}),
       })),
     ),
     path: copyPath(sprite.path),
@@ -72,12 +77,23 @@ export async function loadProject(text: string): Promise<Sprite> {
   if (!Array.isArray(frames) || frames.length < 1 || !frames.every((f) => isCelList(f?.cels, layers.length))) {
     fail('프레임 정보가 올바르지 않습니다.');
   }
+  if (!frames.every((frame) => frame.duration === undefined || isFrameDuration(frame.duration))) fail('프레임 표시 시간이 올바르지 않습니다.');
   if (!isPath(path)) fail('패스 정보가 올바르지 않습니다.');
   const kinds = layers.map((layer) => layer.kind ?? 'pixel');
   const shapesOf = (frame: ProjectFile['frames'][number]) => frame.shapes ?? kinds.map(() => []);
   if (!frames.every((frame) => isShapeLists(shapesOf(frame), kinds, palette.length))) fail('도형 정보가 올바르지 않습니다.');
 
+  if (!frames.every((frame) => frame.masks === undefined || (
+    Array.isArray(frame.masks) && frame.masks.length === layers.length &&
+    frame.masks.every((mask) => mask === null || typeof mask === 'string')
+  ))) fail('마스크 정보가 올바르지 않습니다.');
   const size = width * height;
+  const decodeMask = async (data: string | null) => {
+    if (data === null) return null;
+    const mask = await inflate(base64ToBytes(data), size);
+    if (mask.length !== size || mask.some((value) => value > 1)) fail('마스크 데이터가 올바르지 않습니다.');
+    return mask;
+  };
   const decodeCel = async (data: string) => {
     const cel = await inflate(base64ToBytes(data), size);
     if (cel.length !== size || cel.some((value) => value > palette.length)) fail('픽셀 데이터가 올바르지 않습니다.');
@@ -88,10 +104,16 @@ export async function loadProject(text: string): Promise<Sprite> {
     height,
     fps,
     palette: palette.map((hex) => hex.toLowerCase()),
-    layers: layers.map(({ name, visible }, i) => ({ name, visible, kind: kinds[i] })),
+    layers: layers.map(({ name, visible, locked, maskEnabled }, i) => ({
+      name, visible, kind: kinds[i],
+      ...(locked === undefined ? {} : { locked }),
+      ...(maskEnabled === undefined ? {} : { maskEnabled }),
+    })),
     frames: await Promise.all(
       frames.map(async (frame) => ({
+        ...(frame.duration === undefined ? {} : { duration: frame.duration }),
         cels: await Promise.all(frame.cels.map(decodeCel)),
+        ...(frame.masks ? { masks: await Promise.all(frame.masks.map(decodeMask)) } : {}),
         shapes: shapesOf(frame).map((shapes) => shapes.map((shape) => ({ ...copyPath(shape), color: shape.color }))),
       })),
     ),
@@ -137,7 +159,9 @@ function isPath(value: Partial<VectorPath> | null): value is VectorPath {
 }
 
 function isLayer(value: Partial<Layer> | null): value is ProjectFile['layers'][number] {
-  return typeof value?.name === 'string' && typeof value.visible === 'boolean' && (value.kind === undefined || KINDS.includes(value.kind));
+  return typeof value?.name === 'string' && typeof value.visible === 'boolean' && (value.kind === undefined || KINDS.includes(value.kind)) &&
+    (value.locked === undefined || typeof value.locked === 'boolean') &&
+    (value.maskEnabled === undefined || typeof value.maskEnabled === 'boolean');
 }
 
 function isCelList(value: unknown, length: number): value is string[] {

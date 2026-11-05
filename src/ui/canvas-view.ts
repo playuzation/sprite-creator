@@ -60,6 +60,11 @@ export function createCanvasView(store: Store): HTMLElement {
       image = context.createImageData(sprite.width, sprite.height);
     }
     renderFrameRGBA(sprite, store.frame, image.data);
+    const mask = store.editMask ? sprite.frames[store.frame].masks?.[store.layer] : undefined;
+    if (mask) for (let i = 0; i < mask.length; i++) {
+      image.data.fill(mask[i] ? 255 : 0, i * 4, i * 4 + 3);
+      image.data[i * 4 + 3] = 255;
+    }
     context.putImageData(image, 0, 0);
   };
   const queueRender = () => {
@@ -112,6 +117,7 @@ export function createCanvasView(store: Store): HTMLElement {
   };
   viewport.onpointerup = viewport.onpointercancel = (event) => {
     touches.delete(event.pointerId);
+    if (gesture) store.update(); // 완성한 획을 타임라인 썸네일에도 반영한다.
     gesture = undefined;
     // 손가락이 남아 있으면 남은 손가락을 기준으로 이동을 이어간다.
     panFrom = panFrom && touches.size > 0 ? panPoint(event) : undefined;

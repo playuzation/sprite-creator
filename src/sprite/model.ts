@@ -11,6 +11,8 @@ export const MAX_SIZE = 1024;
 export const MAX_COLORS = 32;
 export const MIN_FPS = 1;
 export const MAX_FPS = 30;
+export const MIN_FRAME_DURATION = 10;
+export const MAX_FRAME_DURATION = 600000;
 export const TRANSPARENT = 0;
 export const MAX_STROKE_WIDTH = 32;
 
@@ -20,6 +22,10 @@ export interface Layer {
   name: string;
   visible: boolean;
   kind: LayerKind;
+  /** 그림과 마스크 편집을 막는다. */
+  locked?: boolean;
+  /** false면 마스크를 보관하되 합성에 적용하지 않는다. */
+  maskEnabled?: boolean;
 }
 
 /**
@@ -27,8 +33,12 @@ export interface Layer {
  * shapes[i]는 layers[i]가 벡터 레이어일 때의 도형들이다 (앞쪽부터 그림. 픽셀 레이어는 빈 목록).
  */
 export interface Frame {
+  /** 표시 시간(ms). 없으면 문서의 기본 FPS를 따른다. */
+  duration?: number;
   cels: Uint8Array<ArrayBuffer>[];
   shapes: VectorShape[][];
+  /** 프레임별 이진 마스크: 0은 숨김, 1은 표시. null은 마스크 없음. */
+  masks?: (Uint8Array<ArrayBuffer> | null)[];
 }
 
 /** 픽셀 좌표의 점 (소수 가능). 픽셀 (i, j)의 중심은 (i + 0.5, j + 0.5)이다. */
@@ -132,14 +142,16 @@ export function resizeCanvas(sprite: Sprite, width: number, height: number, anch
   const [left, right] = [Math.max(0, dx), Math.min(width, dx + sprite.width)];
   const shift = ({ x, y }: Point) => ({ x: x + dx, y: y + dy });
   for (const frame of sprite.frames) {
-    frame.cels = frame.cels.map((cel) => {
-      const resized = new Uint8Array(width * height);
+    const resize = (cel: Uint8Array<ArrayBuffer>, fill = 0) => {
+      const resized = new Uint8Array(width * height).fill(fill);
       for (let y = Math.max(0, dy); y < Math.min(height, dy + sprite.height); y++) {
         const row = (y - dy) * sprite.width - dx;
         if (right > left) resized.set(cel.subarray(row + left, row + right), y * width + left);
       }
       return resized;
-    });
+    };
+    frame.cels = frame.cels.map((cel) => resize(cel));
+    if (frame.masks) frame.masks = frame.masks.map((mask) => mask && resize(mask, 1));
     for (const shape of frame.shapes.flat()) shape.points = shape.points.map(shift);
   }
   sprite.path.points = sprite.path.points.map(shift);
@@ -160,13 +172,15 @@ export function scaleSprite(sprite: Sprite, width: number, height: number): void
   const [scaleX, scaleY] = [width / sprite.width, height / sprite.height];
   const scale = ({ x, y }: Point) => ({ x: x * scaleX, y: y * scaleY });
   for (const frame of sprite.frames) {
-    frame.cels = frame.cels.map((cel) => {
+    const resize = (cel: Uint8Array<ArrayBuffer>) => {
       const scaled = new Uint8Array(width * height);
       for (let y = 0; y < height; y++) {
         for (let x = 0; x < width; x++) scaled[y * width + x] = cel[rows[y] * sprite.width + columns[x]];
       }
       return scaled;
-    });
+    };
+    frame.cels = frame.cels.map((cel) => resize(cel));
+    if (frame.masks) frame.masks = frame.masks.map((mask) => mask && resize(mask));
     for (const shape of frame.shapes.flat()) {
       shape.points = shape.points.map(scale);
       shape.width = Math.min(MAX_STROKE_WIDTH, Math.max(1, Math.round(shape.width * Math.sqrt(scaleX * scaleY))));
@@ -214,15 +228,18 @@ export function addLayer(sprite: Sprite, index: number, kind: LayerKind = 'pixel
   for (const frame of sprite.frames) {
     frame.cels.splice(index, 0, new Uint8Array(sprite.width * sprite.height));
     frame.shapes.splice(index, 0, []);
+    frame.masks?.splice(index, 0, null);
   }
 }
 
 export function removeLayer(sprite: Sprite, index: number): void {
+  assertLayerEditable(sprite, index);
   if (sprite.layers.length <= 1) throw new RangeError('레이어는 최소 1개가 필요합니다.');
   sprite.layers.splice(index, 1);
   for (const frame of sprite.frames) {
     frame.cels.splice(index, 1);
     frame.shapes.splice(index, 1);
+    frame.masks?.splice(index, 1);
   }
 }
 
@@ -232,13 +249,19 @@ export function moveLayer(sprite: Sprite, from: number, to: number): void {
   for (const frame of sprite.frames) {
     move(frame.cels, from, to);
     move(frame.shapes, from, to);
+    if (frame.masks) move(frame.masks, from, to);
   }
 }
 
 /** index 프레임의 모든 레이어(픽셀과 도형)를 복사해 바로 뒤에 새 프레임으로 넣는다. */
 export function duplicateFrame(sprite: Sprite, index: number): void {
-  const { cels, shapes } = sprite.frames[index];
-  sprite.frames.splice(index + 1, 0, { cels: cels.map((cel) => cel.slice()), shapes: shapes.map((list) => list.map(copyShape)) });
+  const { cels, shapes, masks, duration } = sprite.frames[index];
+  sprite.frames.splice(index + 1, 0, {
+    ...(duration === undefined ? {} : { duration }),
+    cels: cels.map((cel) => cel.slice()),
+    shapes: shapes.map((list) => list.map(copyShape)),
+    ...(masks ? { masks: masks.map((mask) => mask?.slice() ?? null) } : {}),
+  });
 }
 
 export function removeFrame(sprite: Sprite, index: number): void {
@@ -253,4 +276,42 @@ function toColor(hex: string): string {
 
 function move<T>(list: T[], from: number, to: number): void {
   list.splice(to, 0, ...list.splice(from, 1));
+}
+
+/** 개별 시간이 없는 기존 프레임은 기본 FPS로 재생한다. */
+export function frameDuration(sprite: Sprite, index: number): number {
+  return sprite.frames[index].duration ?? Math.round(1000 / sprite.fps);
+}
+
+export function isFrameDuration(value: unknown): value is number {
+  return Number.isInteger(value) && (value as number) >= MIN_FRAME_DURATION && (value as number) <= MAX_FRAME_DURATION;
+}
+
+export function setFrameDuration(sprite: Sprite, index: number, duration?: number): void {
+  if (duration !== undefined && !isFrameDuration(duration)) {
+    throw new Error(`표시 시간은 ${MIN_FRAME_DURATION}~${MAX_FRAME_DURATION}ms 사이의 정수여야 합니다.`);
+  }
+  if (duration === undefined) delete sprite.frames[index].duration;
+  else sprite.frames[index].duration = duration;
+}
+
+/** 보호된 레이어의 직접 편집을 거부한다. 문서 전체 변환은 허용한다. */
+export function assertLayerEditable(sprite: Sprite, layer: number): void {
+  if (sprite.layers[layer].locked) throw new Error('보호된 레이어입니다. 보호를 해제한 뒤 편집하세요.');
+}
+
+/** 마스크는 레이어에 추가하고 픽셀은 프레임마다 따로 보관한다. */
+export function addLayerMask(sprite: Sprite, layer: number): void {
+  assertLayerEditable(sprite, layer);
+  for (const frame of sprite.frames) {
+    frame.masks ??= sprite.layers.map(() => null);
+    frame.masks[layer] ??= new Uint8Array(sprite.width * sprite.height).fill(1);
+  }
+  sprite.layers[layer].maskEnabled = true;
+}
+
+export function removeLayerMask(sprite: Sprite, layer: number): void {
+  assertLayerEditable(sprite, layer);
+  for (const frame of sprite.frames) if (frame.masks) frame.masks[layer] = null;
+  delete sprite.layers[layer].maskEnabled;
 }
