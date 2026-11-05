@@ -2,6 +2,7 @@ import { MAX_SIZE, createSprite, loadProject } from '../sprite';
 import { saveFile } from './commands';
 import { h } from './dom';
 import { createExportMenu } from './export-menu';
+import { readImageFile } from './image-import';
 import { createSizeDialog } from './size-dialog';
 import type { Store } from './store';
 
@@ -11,19 +12,47 @@ export function createFileMenu(store: Store): HTMLElement {
   const width = sizeInput('너비');
   const height = sizeInput('높이');
   const fileInput = h('input', { type: 'file', accept: '.json,application/json', hidden: true });
+  const imageInput = h('input', {
+    type: 'file', accept: '.png,.jpg,.jpeg,.webp,.avif,.svg,.gif,image/png,image/jpeg,image/webp,image/avif,image/svg+xml,image/gif', hidden: true,
+  });
+  const openProject = h('button', { textContent: '불러오기', title: '프로젝트 파일(JSON) 열기', onclick: () => fileInput.click() });
+  const openImage = h('button', { textContent: '이미지 불러오기', title: 'PNG·JPG·WebP·AVIF·SVG·GIF를 새 스프라이트로 열기', onclick: () => imageInput.click() });
+  let importing = false;
+  const setImporting = (busy: boolean) => {
+    importing = busy;
+    openImage.disabled = openProject.disabled = busy;
+    openImage.textContent = busy ? '불러오는 중…' : '이미지 불러오기';
+  };
+  imageInput.onchange = async () => {
+    const file = imageInput.files?.[0];
+    imageInput.value = '';
+    if (!file || importing) return;
+    setImporting(true);
+    try {
+      const { sprite, notes } = await readImageFile(file);
+      const message = [
+        `${file.name}: ${sprite.width}×${sprite.height}, ${sprite.frames.length}프레임, ${sprite.palette.length}색`,
+        ...notes, '현재 작업을 이 이미지로 바꿀까요? 저장하지 않은 작업은 사라집니다.',
+      ].join('\n\n');
+      if (confirm(message)) store.update(() => store.open(sprite));
+    } catch (error) {
+      alert(`이미지 불러오기에 실패했습니다: ${(error as Error).message}`);
+    } finally { setImporting(false); }
+  };
   const sizeDialog = createSizeDialog(store);
   let shownSize = '';
 
   fileInput.onchange = async () => {
     const file = fileInput.files?.[0];
     fileInput.value = ''; // 같은 파일을 다시 고를 수 있게 비운다.
-    if (!file) return;
+    if (!file || importing) return;
+    setImporting(true);
     try {
       const sprite = await loadProject(await file.text());
       store.update(() => store.open(sprite));
     } catch (error) {
       alert(`불러오기에 실패했습니다: ${(error as Error).message}`);
-    }
+    } finally { setImporting(false); }
   };
 
   store.subscribe(() => {
@@ -59,11 +88,13 @@ export function createFileMenu(store: Store): HTMLElement {
       onclick: () => sizeDialog.open('canvas'),
     }),
     h('span', { className: 'divider' }),
-    h('button', { textContent: '불러오기', title: '프로젝트 파일(JSON) 열기', onclick: () => fileInput.click() }),
+    openProject,
+    openImage,
     h('button', { textContent: '저장', title: '프로젝트 파일(JSON)로 저장 (Ctrl+S)', onclick: () => saveFile(store) }),
     h('span', { className: 'divider' }),
     createExportMenu(store),
     fileInput,
+    imageInput,
     sizeDialog.element,
   );
 }
