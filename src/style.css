@@ -388,3 +388,30 @@ input[type='color'] {
     height: 70vh;
   }
 }
+
+/* 프레임 합성 썸네일과 번호·표시 시간. 투명 영역은 체크무늬로 구분한다. */
+.frames {
+  flex: 1 1 240px;
+  min-width: 0;
+  padding: 3px;
+}
+
+.frame {
+  flex: none;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  padding: 5px;
+}
+
+.frame-thumbnail {
+  display: block;
+  image-rendering: pixelated;
+  background: repeating-conic-gradient(#bdbdbd 0 25%, #f2f2f2 0 50%) 0 0 / 8px 8px;
+}
+
+.frame-label {
+  font-size: 11px;
+  white-space: nowrap;
+}

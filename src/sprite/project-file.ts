@@ -8,6 +8,7 @@ import {
   copyShape,
   isHexColor,
   isValidSize,
+  isFrameDuration,
   type Layer,
   type LayerKind,
   type Sprite,
@@ -34,7 +35,7 @@ interface ProjectFile {
   fps: number;
   palette: string[];
   layers: (Omit<Layer, 'kind'> & { kind?: LayerKind })[];
-  frames: { cels: string[]; shapes?: VectorShape[][] }[];
+  frames: { cels: string[]; shapes?: VectorShape[][]; duration?: number }[];
   path?: VectorPath;
 }
 
@@ -49,6 +50,7 @@ export async function saveProject(sprite: Sprite): Promise<string> {
     layers: sprite.layers.map(({ name, visible, kind }) => ({ name, visible, kind })),
     frames: await Promise.all(
       sprite.frames.map(async (frame) => ({
+        ...(frame.duration === undefined ? {} : { duration: frame.duration }),
         cels: await Promise.all(frame.cels.map(async (cel) => bytesToBase64(await deflate(cel)))),
         shapes: frame.shapes.map((shapes) => shapes.map(copyShape)),
       })),
@@ -72,6 +74,7 @@ export async function loadProject(text: string): Promise<Sprite> {
   if (!Array.isArray(frames) || frames.length < 1 || !frames.every((f) => isCelList(f?.cels, layers.length))) {
     fail('프레임 정보가 올바르지 않습니다.');
   }
+  if (!frames.every((frame) => frame.duration === undefined || isFrameDuration(frame.duration))) fail('프레임 표시 시간이 올바르지 않습니다.');
   if (!isPath(path)) fail('패스 정보가 올바르지 않습니다.');
   const kinds = layers.map((layer) => layer.kind ?? 'pixel');
   const shapesOf = (frame: ProjectFile['frames'][number]) => frame.shapes ?? kinds.map(() => []);
@@ -91,6 +94,7 @@ export async function loadProject(text: string): Promise<Sprite> {
     layers: layers.map(({ name, visible }, i) => ({ name, visible, kind: kinds[i] })),
     frames: await Promise.all(
       frames.map(async (frame) => ({
+        ...(frame.duration === undefined ? {} : { duration: frame.duration }),
         cels: await Promise.all(frame.cels.map(decodeCel)),
         shapes: shapesOf(frame).map((shapes) => shapes.map((shape) => ({ ...copyPath(shape), color: shape.color }))),
       })),

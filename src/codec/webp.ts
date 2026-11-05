@@ -12,9 +12,10 @@ export interface WebpOptions {
   frames: ReadonlyArray<ArrayLike<number>>;
   /** 프레임 하나의 길이 (밀리초) */
   frameMs: number;
+  frameDurations?: readonly number[];
 }
 
-export function encodeWebp({ width, height, frames, frameMs }: WebpOptions): Uint8Array<ArrayBuffer> {
+export function encodeWebp({ width, height, frames, frameMs, frameDurations }: WebpOptions): Uint8Array<ArrayBuffer> {
   const images = frames.map((rgba) => chunk('VP8L', encodeVp8l(width, height, rgba)));
   if (images.length === 1) return riff(images[0]);
   const size = concat(u24le(width - 1), u24le(height - 1));
@@ -22,7 +23,7 @@ export function encodeWebp({ width, height, frames, frameMs }: WebpOptions): Uin
     chunk('VP8X', [0x12, 0, 0, 0], size), // 알파 + 애니메이션
     chunk('ANIM', u32le(0), u16le(0)), // 배경 투명, 반복 횟수 0 = 무한
     // 프레임마다 캔버스 전체를 덮어쓴다 (섞지 않음).
-    ...images.map((image) => chunk('ANMF', u24le(0), u24le(0), size, u24le(frameMs), [0x02], image)),
+    ...images.map((image, i) => chunk('ANMF', u24le(0), u24le(0), size, u24le(frameDurations?.[i] ?? frameMs), [0x02], image)),
   );
 }
 
